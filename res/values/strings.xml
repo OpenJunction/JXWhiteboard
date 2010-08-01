@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="app_name">JXWhiteboard</string>
+
+  <string name="color">Color</string>
+  <string name="color_picker">Color picker</string>
+  <string name="linewidth_prompt">Choose a line width</string>
+  <string name="linewidth_picker">Choose a line width</string>
+  <string name="liaison_service_stopped">The Liaison Service has stopped.</string>
+  <string name="liaison_service_started">The Liaison Service has started.</string>
+  <string name="liaison_service_connected">The Liaison Service is now connected.</string>
+  <string name="liaison_service_disconnected">The Liaison Service has disconnected.</string>
+  <string name="advertised">Your whiteboard is now public!</string>
+  <string name="advertise_failed">Oops! Failed to advertise your whiteboard.</string>
+  <string name="findwhiteboards">Find public whiteboards.</string>
+  <string name="advertise_dialog_title">Advertise....</string>
+  <string name="advertise_dialog_prompt">Enter a name for this Whiteboard</string>
+  <string name="join_dialog_title">Join....</string>
+  <string name="join_dialog_prompt">Enter a Session Id of Whiteboard</string>
+</resources>
