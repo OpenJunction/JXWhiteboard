@@ -93,8 +93,14 @@ public class JXWhiteboardActivity extends Activity{
 		super.onCreate(savedInstanceState);
 		panel = new DrawingPanel(this);
 		setContentView(panel);
-		String randomSession = UUID.randomUUID().toString();
-		initJunction(Uri.parse(DEFAULT_HOST + "/" + randomSession ));
+		Uri sessionUri;
+		if (AndroidJunctionMaker.isJoinable(this)) {
+			sessionUri = Uri.parse(getIntent().getStringExtra("invitationURI"));
+		} else {
+			String randomSession = UUID.randomUUID().toString();
+			sessionUri = Uri.parse(DEFAULT_HOST + "/" + randomSession );
+		}
+		initJunction(sessionUri);
 		bindLiaisonService();
 	}
 
