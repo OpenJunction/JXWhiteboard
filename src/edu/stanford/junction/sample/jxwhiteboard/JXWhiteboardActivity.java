@@ -135,7 +135,7 @@ public class JXWhiteboardActivity extends Activity{
 					currentPoints.add(localToVirt(event.getX()));
 					currentPoints.add(localToVirt(event.getY()));
 					if(eraseMode) prop.add(prop.newStroke(ERASE_COLOR, ERASE_WIDTH, currentPoints));
-					else prop.add(prop.newStroke(currentColor, currentWidth, currentPoints));
+					else prop.add(prop.newStroke(currentColor, localToVirt(currentWidth), currentPoints));
 					currentPoints.clear();
 					repaint(false);
 				}
@@ -178,7 +178,7 @@ public class JXWhiteboardActivity extends Activity{
 			}
 			else{
 				paint.setColor(0xFF000000 | currentColor);
-				paint.setStrokeWidth(virtToLocal(currentWidth));
+				paint.setStrokeWidth(virtToLocal(localToVirt(currentWidth)));
 			}
 			paintStroke(canvas, paint, currentPoints);
 		}
@@ -191,6 +191,21 @@ public class JXWhiteboardActivity extends Activity{
 				for(int i = 2; i < points.size(); i += 2) {
 					x2 = virtToLocal(points.get(i));
 					y2 = virtToLocal(points.get(i+1));
+					canvas.drawLine(x1,y1,x2,y2, paint);
+					x1 = x2;
+					y1 = y2;
+				}
+			}
+		}
+
+		protected void paintStroke(Canvas canvas, Paint paint, JSONArray points){
+			if(points.length() >= 4){
+				int x1, y1, x2, y2;
+				x1 = virtToLocal(points.optInt(0));
+				y1 = virtToLocal(points.optInt(1));
+				for(int i = 2; i < points.length(); i += 2) {
+					x2 = virtToLocal(points.optInt(i));
+					y2 = virtToLocal(points.optInt(i+1));
 					canvas.drawLine(x1,y1,x2,y2, paint);
 					x1 = x2;
 					y1 = y2;
@@ -555,7 +570,6 @@ public class JXWhiteboardActivity extends Activity{
 		bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
 	}
 
-
 	public void onDestroy(){
 		super.onDestroy();
 		unbindService(mConnection);
@@ -563,7 +577,7 @@ public class JXWhiteboardActivity extends Activity{
 
 	private int virtToLocal(float val){
 		float ratio = (float)localWidth/(float)VIRTUAL_WIDTH;
-		return (int)val * ratio;
+		return (int)(val * ratio);
 	}
 
 	private int virtToLocal(int val){
@@ -571,13 +585,15 @@ public class JXWhiteboardActivity extends Activity{
 	}
 
 	private int localToVirt(float val){
-		float ratio = (float)localWidth/(float)VIRTUAL_WIDTH;
+		float ratio = (float)VIRTUAL_WIDTH/(float)localWidth;
 		return (int)(val * ratio);
 	}
 
 	private int localToVirt(int val){
-		localToVirt((float)int);
+		return localToVirt((float)val);
 	}
+
+
 
 
 }
