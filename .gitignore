@@ -1,4 +1,5 @@
 *.class
 *.apk
 *.ap
+*.ap_
 classes.dex

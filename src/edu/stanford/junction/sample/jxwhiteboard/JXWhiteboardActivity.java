@@ -87,6 +87,9 @@ public class JXWhiteboardActivity extends Activity{
 	public static final int FIND_BOARDS = 9;
 	public static final String DEFAULT_HOST = "junction://openjunction.org";
 
+    private static final int VIRTUAL_WIDTH = 768;
+    private int localWidth = 0;
+
 
 
 	public void onCreate(Bundle savedInstanceState) {
@@ -119,18 +122,18 @@ public class JXWhiteboardActivity extends Activity{
 			synchronized (getHolder()) {
 				if(event.getAction() == MotionEvent.ACTION_DOWN){
 					currentPoints.clear();
-					currentPoints.add((int)event.getX());
-					currentPoints.add((int)event.getY());
+					currentPoints.add(localToVirt(event.getX()));
+					currentPoints.add(localToVirt(event.getY()));
 					repaint(false);
 				}
 				else if(event.getAction() == MotionEvent.ACTION_MOVE){
-					currentPoints.add((int)event.getX());
-					currentPoints.add((int)event.getY());
+					currentPoints.add(localToVirt(event.getX()));
+					currentPoints.add(localToVirt(event.getY()));
 					repaint(false);
 				}
 				else if(event.getAction() == MotionEvent.ACTION_UP){
-					currentPoints.add((int)event.getX());
-					currentPoints.add((int)event.getY());
+					currentPoints.add(localToVirt(event.getX()));
+					currentPoints.add(localToVirt(event.getY()));
 					if(eraseMode) prop.add(prop.newStroke(ERASE_COLOR, ERASE_WIDTH, currentPoints));
 					else prop.add(prop.newStroke(currentColor, currentWidth, currentPoints));
 					currentPoints.clear();
@@ -154,54 +157,45 @@ public class JXWhiteboardActivity extends Activity{
 			for (JSONObject o : prop.items()) {
 				int color = Integer.parseInt(o.optString("color").substring(1), 16);
 				mPaint.setColor(0xFF000000 | color);
-				mPaint.setStrokeWidth(o.optInt("width"));
+				mPaint.setStrokeWidth(virtToLocal(o.optInt("width")));
 				JSONArray points = o.optJSONArray("points");
-				int x1, y1, x2, y2;
-				if(points.length() >= 4){
-					x1 = points.optInt(0);
-					y1 = points.optInt(1);
-					for(int i = 2; i < points.length(); i += 2) {
-						x2 = points.optInt(i);
-						y2 = points.optInt(i+1);
-						canvas.drawLine(x1,y1,x2,y2, mPaint);
-						x1 = x2;
-						y1 = y2;
-					}
-				}
+				paintStroke(canvas, mPaint, points);
 			}
-
 			paintCurrentStroke(canvas);
 		}
 
 		protected void paintCurrentStroke(Canvas canvas){
-			Paint mPaint = new Paint();
-			mPaint.setDither(true);
-			mPaint.setStyle(Paint.Style.STROKE);
-			mPaint.setStrokeJoin(Paint.Join.ROUND);
-			mPaint.setStrokeCap(Paint.Cap.ROUND);
+			Paint paint = new Paint();
+			paint.setDither(true);
+			paint.setStyle(Paint.Style.STROKE);
+			paint.setStrokeJoin(Paint.Join.ROUND);
+			paint.setStrokeCap(Paint.Cap.ROUND);
 
 			// Draw stroke-in-progress
 			if(eraseMode){
-				mPaint.setColor(0xFF000000 | ERASE_COLOR);
-				mPaint.setStrokeWidth(ERASE_WIDTH);
+				paint.setColor(0xFF000000 | ERASE_COLOR);
+				paint.setStrokeWidth(ERASE_WIDTH);
 			}
 			else{
-				mPaint.setColor(0xFF000000 | currentColor);
-				mPaint.setStrokeWidth(currentWidth);
+				paint.setColor(0xFF000000 | currentColor);
+				paint.setStrokeWidth(virtToLocal(currentWidth));
 			}
-			if(currentPoints.size() >= 4){
+			paintStroke(canvas, paint, currentPoints);
+		}
+
+		protected void paintStroke(Canvas canvas, Paint paint, List<Integer> points){
+			if(points.size() >= 4){
 				int x1, y1, x2, y2;
-				x1 = currentPoints.get(0);
-				y1 = currentPoints.get(1);
-				for(int i = 2; i < currentPoints.size(); i += 2) {
-					x2 = currentPoints.get(i);
-					y2 = currentPoints.get(i+1);
-					canvas.drawLine(x1,y1,x2,y2, mPaint);
+				x1 = virtToLocal(points.get(0));
+				y1 = virtToLocal(points.get(1));
+				for(int i = 2; i < points.size(); i += 2) {
+					x2 = virtToLocal(points.get(i));
+					y2 = virtToLocal(points.get(i+1));
+					canvas.drawLine(x1,y1,x2,y2, paint);
 					x1 = x2;
 					y1 = y2;
 				}
 			}
-
 		}
 		
 		public void repaint(boolean all) {
@@ -226,7 +220,8 @@ public class JXWhiteboardActivity extends Activity{
 			}
 		}
 		
-		public void surfaceChanged(SurfaceHolder holder, int format, int width,int height) { 
+		public void surfaceChanged(SurfaceHolder holder, int format, int width,int height) {
+			localWidth = width;
 			mBackgroundImage = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
 			repaint(true);
 		}
@@ -564,6 +559,24 @@ public class JXWhiteboardActivity extends Activity{
 	public void onDestroy(){
 		super.onDestroy();
 		unbindService(mConnection);
+	}
+
+	private int virtToLocal(float val){
+		float ratio = (float)localWidth/(float)VIRTUAL_WIDTH;
+		return (int)val * ratio;
+	}
+
+	private int virtToLocal(int val){
+		return virtToLocal((float)val);
+	}
+
+	private int localToVirt(float val){
+		float ratio = (float)localWidth/(float)VIRTUAL_WIDTH;
+		return (int)(val * ratio);
+	}
+
+	private int localToVirt(int val){
+		localToVirt((float)int);
 	}
 
 
