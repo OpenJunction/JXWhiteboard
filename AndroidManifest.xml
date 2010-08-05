@@ -54,5 +54,15 @@
     </activity>
 
 
+    <activity android:name="edu.stanford.junction.sample.jxwhiteboard.SavedBoardsBrowserActivity"
+	      android:label="@string/loadwhiteboard"
+	      android:screenOrientation="portrait">
+      <intent-filter>
+	<action android:name="edu.stanford.junction.sample.jxwhiteboard.action.LOAD_SAVED_BOARD" />
+	<category android:name="android.intent.category.DEFAULT" />
+      </intent-filter>
+    </activity>
+
+
   </application>
 </manifest> 

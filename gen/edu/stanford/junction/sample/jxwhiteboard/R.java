@@ -31,21 +31,22 @@ public final class R {
         public static final int message=0x7f030004;
     }
     public static final class string {
-        public static final int advertise_dialog_prompt=0x7f04000d;
-        public static final int advertise_dialog_title=0x7f04000c;
+        public static final int advertise_dialog_prompt=0x7f04000e;
+        public static final int advertise_dialog_title=0x7f04000d;
         public static final int advertise_failed=0x7f04000a;
         public static final int advertised=0x7f040009;
         public static final int app_name=0x7f040000;
         public static final int color=0x7f040001;
         public static final int color_picker=0x7f040002;
         public static final int findwhiteboards=0x7f04000b;
-        public static final int join_dialog_prompt=0x7f04000f;
-        public static final int join_dialog_title=0x7f04000e;
+        public static final int join_dialog_prompt=0x7f040010;
+        public static final int join_dialog_title=0x7f04000f;
         public static final int liaison_service_connected=0x7f040007;
         public static final int liaison_service_disconnected=0x7f040008;
         public static final int liaison_service_started=0x7f040006;
         public static final int liaison_service_stopped=0x7f040005;
         public static final int linewidth_picker=0x7f040004;
         public static final int linewidth_prompt=0x7f040003;
+        public static final int loadwhiteboard=0x7f04000c;
     }
 }

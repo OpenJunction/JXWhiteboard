@@ -11,9 +11,11 @@ import edu.stanford.junction.api.messaging.MessageHeader;
 import edu.stanford.junction.provider.xmpp.XMPPSwitchboardConfig;
 import edu.stanford.junction.provider.xmpp.ConnectionTimeoutException;
 import edu.stanford.junction.props2.Prop;
+import edu.stanford.junction.props2.sample.ListState;
 import edu.stanford.junction.props2.IPropChangeListener;
 
 import android.content.ServiceConnection;
+import android.content.ContentValues;
 import android.app.Service;
 import android.os.IBinder;
 import android.app.Activity;
@@ -48,6 +50,8 @@ import android.content.Intent;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.net.Uri;
+import android.database.sqlite.*;
+import android.database.Cursor;
 
 import org.json.*;
 import java.net.*;
@@ -62,6 +66,7 @@ public class JXWhiteboardActivity extends Activity{
     private static final int REQUEST_CODE_PICK_COLOR = 1;
     private static final int REQUEST_CODE_PICK_LINE_WIDTH = 2;
     private static final int REQUEST_CODE_FIND_WHITEBOARDS = 3;
+    private static final int REQUEST_CODE_LOAD_WHITEBOARD = 4;
 
 
     private static final int ERASE_COLOR = 0xFFFFFF;
@@ -85,6 +90,8 @@ public class JXWhiteboardActivity extends Activity{
 	public static final int ADVERTISE = 7;
 	public static final int JOIN_BY_NAME = 8;
 	public static final int FIND_BOARDS = 9;
+	public static final int LOAD_BOARD = 10;
+	public static final int SAVE_BOARD = 11;
 	public static final String DEFAULT_HOST = "junction://openjunction.org";
 
     private static final int VIRTUAL_WIDTH = 768;
@@ -100,10 +107,9 @@ public class JXWhiteboardActivity extends Activity{
 		if (AndroidJunctionMaker.isJoinable(this)) {
 			sessionUri = Uri.parse(getIntent().getStringExtra("invitationURI"));
 		} else {
-			String randomSession = UUID.randomUUID().toString();
-			sessionUri = Uri.parse(DEFAULT_HOST + "/" + randomSession );
+			sessionUri = newRandomSessionUri();
 		}
-		initJunction(sessionUri);
+		initJunction(sessionUri, null);
 		bindLiaisonService();
 	}
 
@@ -134,8 +140,12 @@ public class JXWhiteboardActivity extends Activity{
 				else if(event.getAction() == MotionEvent.ACTION_UP){
 					currentPoints.add(localToVirt(event.getX()));
 					currentPoints.add(localToVirt(event.getY()));
-					if(eraseMode) prop.add(prop.newStroke(ERASE_COLOR, ERASE_WIDTH, currentPoints));
-					else prop.add(prop.newStroke(currentColor, localToVirt(currentWidth), currentPoints));
+					if(eraseMode) prop.add(prop.newStroke(ERASE_COLOR, 
+														  ERASE_WIDTH, 
+														  currentPoints));
+					else prop.add(prop.newStroke(currentColor, 
+												 localToVirt(currentWidth), 
+												 currentPoints));
 					currentPoints.clear();
 					repaint(false);
 				}
@@ -323,7 +333,9 @@ public class JXWhiteboardActivity extends Activity{
 			menu.add(0,CLEAR,0, "Clear All");
 			menu.add(0,SHARE_SNAPSHOT,0, "Take Snapshot");
 			menu.add(0,ADVERTISE,0, "Advertise Board");
-			menu.add(0,FIND_BOARDS,0, "Find Boards");
+			menu.add(0,FIND_BOARDS,0, "Find Public Boards");
+			menu.add(0,LOAD_BOARD,0, "Load a Saved Board");
+			menu.add(0,SAVE_BOARD,0, "Save Board");
 			menu.add(0,JOIN_BY_NAME,0, "Join by Session Id");
 			menu.add(0,EXIT,0,"Exit");
 		}
@@ -334,7 +346,9 @@ public class JXWhiteboardActivity extends Activity{
 			menu.add(0,CLEAR,0, "Clear All");
 			menu.add(0,SHARE_SNAPSHOT,0, "Take Snapshot");
 			menu.add(0,ADVERTISE,0, "Advertise Board");
-			menu.add(0,FIND_BOARDS,0, "Find Boards");
+			menu.add(0,FIND_BOARDS,0, "Find Public Boards");
+			menu.add(0,LOAD_BOARD,0, "Load a Saved Board");
+			menu.add(0,SAVE_BOARD,0, "Save Board");
 			menu.add(0,JOIN_BY_NAME,0, "Join by Name");
 			menu.add(0,EXIT,0,"Exit");
 		}
@@ -367,6 +381,12 @@ public class JXWhiteboardActivity extends Activity{
 		case FIND_BOARDS:
 			findBoards();
 			return true;
+		case LOAD_BOARD:
+			loadSavedBoard();
+			return true;
+		case SAVE_BOARD:
+			saveBoard();
+			return true;
 		case JOIN_BY_NAME:
 			joinByName();
 			return true;
@@ -395,6 +415,12 @@ public class JXWhiteboardActivity extends Activity{
 		i.setAction(WhiteboardIntents.ACTION_FIND_WHITEBOARDS);
 		i.putExtra(WhiteboardIntents.EXTRA_SESSION_URL, "");
 		startActivityForResult(i, REQUEST_CODE_FIND_WHITEBOARDS);
+	}
+
+	private void loadSavedBoard(){
+		Intent i = new Intent();
+		i.setAction(WhiteboardIntents.ACTION_LOAD_SAVED_BOARD);
+		startActivityForResult(i, REQUEST_CODE_LOAD_WHITEBOARD);
 	}
 
 	private void advertiseBoard(){
@@ -427,6 +453,45 @@ public class JXWhiteboardActivity extends Activity{
 		Toast.makeText(this, R.string.advertise_failed, Toast.LENGTH_SHORT).show();
 	}
 
+	private void saveBoard(){
+		final Junction jx = mActor.getJunction();
+		if(jx != null){
+			AlertDialog.Builder alert = new AlertDialog.Builder(this);
+			alert.setTitle(R.string.advertise_dialog_title);  
+			alert.setMessage("Name this Whiteboard");
+			final EditText input = new EditText(this);  
+			alert.setView(input);
+			alert.setPositiveButton("Ok", new DialogInterface.OnClickListener() {  
+					public void onClick(DialogInterface dialog, int whichButton){
+						String name = input.getText().toString();
+						saveBoardToDB(name, prop.stateToJSON(), prop.getSequenceNum());
+						Toast.makeText(JXWhiteboardActivity.this, 
+									   "Saved", 
+									   Toast.LENGTH_SHORT).show();
+					}
+				});  
+			alert.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {  
+					public void onClick(DialogInterface dialog, int whichButton) {}  
+				});  
+			alert.show();  
+			return;
+		}
+	}
+
+	private void saveBoardToDB(String name, JSONObject data, long seqNum){
+		SQLiteOpenHelper helper = new BoardsDBHelper(this);
+		SQLiteDatabase db = helper.getWritableDatabase();
+		ContentValues vals = new ContentValues();
+		vals.put("name", name);
+		vals.put("data", data.toString());
+		vals.put("seqNum", seqNum);
+		try{
+			db.insertOrThrow("boards", null, vals);
+		}
+		catch(Exception e){
+			Log.e("JXWhiteboardActivity", e.toString());
+		}
+	}
 
 	private void joinByName(){
 		AlertDialog.Builder alert = new AlertDialog.Builder(this);
@@ -437,7 +502,7 @@ public class JXWhiteboardActivity extends Activity{
 		alert.setPositiveButton("Ok", new DialogInterface.OnClickListener() {  
 				public void onClick(DialogInterface dialog, int whichButton){  
 					String value = input.getText().toString();
-					initJunction(Uri.parse(DEFAULT_HOST + "/" + value));
+					initJunction(Uri.parse(DEFAULT_HOST + "/" + value), null);
 					panel.repaint(true);
 				}  
 			});  
@@ -470,25 +535,57 @@ public class JXWhiteboardActivity extends Activity{
 			if(resultCode == RESULT_OK){
 				String url = data.getStringExtra(
 					WhiteboardIntents.EXTRA_SESSION_URL);
-				initJunction(Uri.parse(url));
+				initJunction(Uri.parse(url), null);
+			}
+			break;
+		case REQUEST_CODE_LOAD_WHITEBOARD:
+			if(resultCode == RESULT_OK){
+				String name = data.getStringExtra(
+					WhiteboardIntents.EXTRA_SAVED_BOARD_NAME);
+				String d = data.getStringExtra(
+					WhiteboardIntents.EXTRA_SAVED_BOARD_DATA);
+				long seqNum = data.getLongExtra(
+					WhiteboardIntents.EXTRA_SAVED_BOARD_SEQNUM, 0);
+				SavedBoard b = new SavedBoard(name, d, seqNum);
+				initJunction(newRandomSessionUri(), b);
 			}
 			break;
 		}
 	}
 
+	private Uri newRandomSessionUri(){
+		String randomSession = UUID.randomUUID().toString();
+		return Uri.parse(DEFAULT_HOST + "/" + randomSession );
+	}
 
 
-	private void initJunction(Uri uri){
-		prop = new WhiteboardProp("whiteboard_model");
+	private void initJunction(Uri uri, SavedBoard savedBoard){
+		if(savedBoard != null){
+			JSONObject obj = savedBoard.obj();
+			JSONArray items = obj.optJSONArray("items");
+			ArrayList<JSONObject> strokes = new ArrayList<JSONObject>();
+			if(items != null){
+				for(int i = 0; i < items.length(); i++){
+					JSONObject stroke = items.optJSONObject(i);
+					strokes.add(stroke);
+				}
+			}
+			ListState state = new ListState(strokes);
+			long seqNum = savedBoard.seqNum;
+			prop = new WhiteboardProp("whiteboard_model", state, seqNum);
+		}
+		else{
+			prop = new WhiteboardProp("whiteboard_model");
+		}
 		prop.addChangeListener(new IPropChangeListener(){
 				public String getType(){ return Prop.EVT_CHANGE; }
-				public void onChange(Object data){ 
+				public void onChange(Object data){
 					panel.repaint(true);
 				}
 			});
 		prop.addChangeListener(new IPropChangeListener(){
 				public String getType(){ return Prop.EVT_SYNC; }
-				public void onChange(Object data){ 
+				public void onChange(Object data){
 					panel.repaint(true);
 				}
 			});
@@ -535,10 +632,12 @@ public class JXWhiteboardActivity extends Activity{
 	private void maybeRetryJunction(final Uri uri, final JunctionException e){
 		AlertDialog.Builder alert = new AlertDialog.Builder(this);
 		alert.setTitle("Connection Failed");  
-		alert.setMessage("Failed to connect to Whiteboard. " + e.getWrappedThrowable().getMessage() + ". Retry connection?");
+		alert.setMessage("Failed to connect to Whiteboard. " + 
+						 e.getWrappedThrowable().getMessage() + 
+						 ". Retry connection?");
 		alert.setPositiveButton("Ok", new DialogInterface.OnClickListener() {  
 				public void onClick(DialogInterface dialog, int whichButton){  
-					initJunction(uri);
+					initJunction(uri, null);
 				}
 			});  
 		alert.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {  

@@ -92,6 +92,16 @@ public final class WhiteboardIntents {
 	public final static String EXTRA_TWITTER_USERNAME = "edu.stanford.junction.sample.jxwhiteboard.extra.TWITTER_USERNAME";
 
 	public final static String EXTRA_TWITTER_PASSWORD = "edu.stanford.junction.sample.jxwhiteboard.extra.TWITTER_PASSWORD";
+
+
+
+	public final static String EXTRA_SAVED_BOARD_NAME = "edu.stanford.junction.sample.jxwhiteboard.extra.SAVED_BOARD_NAME";
+
+	public final static String EXTRA_SAVED_BOARD_DATA = "edu.stanford.junction.sample.jxwhiteboard.extra.SAVED_BOARD_DATA";
+
+	public final static String EXTRA_SAVED_BOARD_SEQNUM = "edu.stanford.junction.sample.jxwhiteboard.extra.SAVED_BOARD_SEQNUM";
+
+	public final static String ACTION_LOAD_SAVED_BOARD = "edu.stanford.junction.sample.jxwhiteboard.action.LOAD_SAVED_BOARD";
 	
 
 }

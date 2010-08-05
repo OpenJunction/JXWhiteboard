@@ -13,6 +13,7 @@
   <string name="advertised">Your whiteboard is now public!</string>
   <string name="advertise_failed">Oops! Failed to advertise your whiteboard.</string>
   <string name="findwhiteboards">Find public whiteboards.</string>
+  <string name="loadwhiteboard">Load a saved whiteboard.</string>
   <string name="advertise_dialog_title">Advertise....</string>
   <string name="advertise_dialog_prompt">Enter a name for this Whiteboard</string>
   <string name="join_dialog_title">Join....</string>
