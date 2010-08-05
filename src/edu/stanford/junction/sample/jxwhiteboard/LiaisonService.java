@@ -162,12 +162,10 @@ public class LiaisonService extends Service {
 		}
 	}
 
-	private JunctionActor mActor = new JunctionActor(ROLE_LIAISON){
+	private final JunctionActor mActor = new JunctionActor(ROLE_LIAISON){
 			@Override
 			public void onActivityJoin(){
-				Log.i("LiaisonService", "Liaison joined activity!");
-				// Ask all the other liaisons to resend their advertisments
-				// to us.
+				Log.i("LiaisonService", "Liaison joined the lobby.");
 				sendAdvertQuery();
 			}
 			@Override
@@ -179,10 +177,9 @@ public class LiaisonService extends Service {
 
 				if(type.equals(LiaisonService.MSG_TYPE_ADVERT)){
 					JSONObject advert = new JSONObjWrapper(msg);
-					if(!(mAdvertised.contains(advert))){
-						mAdverts.add(new JSONObjWrapper(msg));
-						dispatchChanged();
-					}
+					// Note, we intentionally include adverts that we posted ourselves.
+					mAdverts.add(new JSONObjWrapper(msg));
+					dispatchChanged();
 				}
 				else if(type.equals(LiaisonService.MSG_TYPE_UNADVERT)){
 					mAdverts.remove(new JSONObjWrapper(msg));
@@ -197,15 +194,20 @@ public class LiaisonService extends Service {
 			}
 		};
 
-	public void init(Uri uri){
-		try {
-			URI url = new URI(uri.toString());
-			final XMPPSwitchboardConfig sb = new XMPPSwitchboardConfig(uri.getAuthority());
-			AndroidJunctionMaker.getInstance(sb).newJunction(url, mActor);
-		}
-		catch (Exception e) {
-			Log.e("LiaisonService", "Ooops! " + e);
-		}
+	public void init(final Uri uri){
+		new Thread(){
+			public void run(){
+				try {
+					URI url = new URI(uri.toString());
+					final XMPPSwitchboardConfig sb = new XMPPSwitchboardConfig(uri.getAuthority());
+					AndroidJunctionMaker.getInstance(sb).newJunction(url, mActor);
+					Log.i("LiaisonService", "LiasonService connected.");
+				}
+				catch (Exception e) {
+					Log.e("LiaisonService", "Ooops! " + e);
+				}
+			}
+		}.start();
 	}
 
 	@Override

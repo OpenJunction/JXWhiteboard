@@ -497,7 +497,8 @@ public class JXWhiteboardActivity extends Activity{
 		AlertDialog.Builder alert = new AlertDialog.Builder(this);
 		alert.setTitle(R.string.join_dialog_title);  
 		alert.setMessage(R.string.join_dialog_prompt);
-		final EditText input = new EditText(this);  
+		final EditText input = new EditText(this);
+		input.setText("whiteboard");
 		alert.setView(input);  
 		alert.setPositiveButton("Ok", new DialogInterface.OnClickListener() {  
 				public void onClick(DialogInterface dialog, int whichButton){  
