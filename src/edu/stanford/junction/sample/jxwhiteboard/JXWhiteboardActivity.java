@@ -58,7 +58,6 @@ import java.net.*;
 import java.io.*;
 import java.util.*;
 
-
 public class JXWhiteboardActivity extends Activity{
 
 	private WhiteboardProp prop;
@@ -92,7 +91,7 @@ public class JXWhiteboardActivity extends Activity{
 	public static final int FIND_BOARDS = 9;
 	public static final int LOAD_BOARD = 10;
 	public static final int SAVE_BOARD = 11;
-	public static final String DEFAULT_HOST = "junction://openjunction.org";
+	public static final String DEFAULT_HOST = "junction://sb.openjunction.org";
 
     private static final int VIRTUAL_WIDTH = 768;
     private int localWidth = 0;
@@ -107,7 +106,7 @@ public class JXWhiteboardActivity extends Activity{
 		if (AndroidJunctionMaker.isJoinable(this)) {
 			sessionUri = Uri.parse(getIntent().getStringExtra("invitationURI"));
 		} else {
-			sessionUri = newRandomSessionUri();
+			sessionUri = fixedSessionUri("whiteboard");
 		}
 		initJunction(sessionUri, null);
 		bindLiaisonService();
@@ -557,6 +556,10 @@ public class JXWhiteboardActivity extends Activity{
 	private Uri newRandomSessionUri(){
 		String randomSession = UUID.randomUUID().toString();
 		return Uri.parse(DEFAULT_HOST + "/" + randomSession );
+	}
+
+	private Uri fixedSessionUri(String sessId){
+		return Uri.parse(DEFAULT_HOST + "/" + sessId );
 	}
 
 
