@@ -8,8 +8,7 @@ import edu.stanford.junction.JunctionException;
 import edu.stanford.junction.api.activity.JunctionActor;
 import edu.stanford.junction.api.activity.JunctionExtra;
 import edu.stanford.junction.api.messaging.MessageHeader;
-import edu.stanford.junction.provider.xmpp.XMPPSwitchboardConfig;
-import edu.stanford.junction.provider.xmpp.ConnectionTimeoutException;
+import edu.stanford.junction.provider.irc.IRCSwitchboardConfig;
 import edu.stanford.junction.props2.Prop;
 import edu.stanford.junction.props2.sample.ListState;
 import edu.stanford.junction.props2.IPropChangeListener;
@@ -106,10 +105,10 @@ public class JXWhiteboardActivity extends Activity{
 		if (AndroidJunctionMaker.isJoinable(this)) {
 			sessionUri = Uri.parse(getIntent().getStringExtra("invitationURI"));
 		} else {
-			sessionUri = fixedSessionUri("whiteboard");
+			sessionUri = ircSessionUri("whiteboard");
 		}
 		initJunction(sessionUri, null);
-		bindLiaisonService();
+		//bindLiaisonService();
 	}
 
 	class DrawingPanel extends SurfaceView implements SurfaceHolder.Callback {
@@ -559,11 +558,15 @@ public class JXWhiteboardActivity extends Activity{
 	}
 
 	private Uri fixedSessionUri(String sessId){
-		return Uri.parse(DEFAULT_HOST + "/" + sessId );
+		return Uri.parse(DEFAULT_HOST + "/" + sessId);
 	}
 
+	private Uri ircSessionUri(String sessId){
+		return Uri.parse("junction://chat.us.freenode.net:6667" + "/" + sessId + "#irc");
+	}
 
 	private void initJunction(Uri uri, SavedBoard savedBoard){
+		System.out.println("Joining " + uri);
 		if(savedBoard != null){
 			JSONObject obj = savedBoard.obj();
 			JSONArray items = obj.optJSONArray("items");
@@ -623,10 +626,9 @@ public class JXWhiteboardActivity extends Activity{
 					return extras;
 				}
 			};
-		final XMPPSwitchboardConfig sb = new XMPPSwitchboardConfig(uri.getAuthority());
-		sb.setConnectionTimeout(10000);
 		try{
-			AndroidJunctionMaker.getInstance(sb).newJunction(url, mActor);
+			AndroidJunctionMaker.getInstance(
+				new IRCSwitchboardConfig()).newJunction(url, mActor);
 		}
 		catch(JunctionException e){
 			maybeRetryJunction(uri, e);
