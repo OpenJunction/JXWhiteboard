@@ -5,21 +5,26 @@ import edu.stanford.junction.sample.jxwhiteboard.intents.WhiteboardIntents;
 import edu.stanford.junction.android.AndroidJunctionMaker;
 import edu.stanford.junction.Junction;
 import edu.stanford.junction.JunctionException;
+import edu.stanford.junction.SwitchboardConfig;
+import edu.stanford.junction.api.activity.ActivityScript;
 import edu.stanford.junction.api.activity.JunctionActor;
 import edu.stanford.junction.api.activity.JunctionExtra;
 import edu.stanford.junction.api.messaging.MessageHeader;
+import edu.stanford.junction.provider.bluetooth.BluetoothSwitchboardConfig;
 import edu.stanford.junction.provider.xmpp.XMPPSwitchboardConfig;
-import edu.stanford.junction.provider.xmpp.ConnectionTimeoutException;
 import edu.stanford.junction.props2.Prop;
 import edu.stanford.junction.props2.sample.ListState;
 import edu.stanford.junction.props2.IPropChangeListener;
+import edu.stanford.mobisocial.appmanifest.ApplicationManifest;
+import edu.stanford.mobisocial.appmanifest.platforms.AndroidPlatformReference;
+import edu.stanford.mobisocial.appmanifest.platforms.PlatformReference;
+import edu.stanford.mobisocial.appmanifest.platforms.WebPlatformReference;
+import mobisocial.nfc.Nfc;
 
 import android.content.ServiceConnection;
 import android.content.ContentValues;
-import android.app.Service;
 import android.os.IBinder;
 import android.app.Activity;
-import android.app.NotificationManager;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.Context;
@@ -29,20 +34,12 @@ import android.os.Environment;
 import android.view.View;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.widget.TextView;
 import android.widget.EditText;
 import android.widget.Toast;
-import android.widget.ArrayAdapter;
-import android.os.Handler;
-import android.os.Message;
 import android.os.Process;
-import android.app.ListActivity;
-import android.widget.AdapterView.OnItemClickListener;
-import android.widget.AdapterView;
 import android.graphics.Canvas;
 import android.graphics.Bitmap;
 import android.graphics.Paint;
-import android.graphics.Path;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -51,14 +48,14 @@ import android.provider.MediaStore;
 import android.util.Log;
 import android.net.Uri;
 import android.database.sqlite.*;
-import android.database.Cursor;
 
 import org.json.*;
+
 import java.net.*;
 import java.io.*;
 import java.util.*;
 
-public class JXWhiteboardActivity extends Activity{
+public class JXWhiteboardActivity extends Activity {
 
 	private WhiteboardProp prop;
 
@@ -70,9 +67,11 @@ public class JXWhiteboardActivity extends Activity{
 
     private static final int ERASE_COLOR = 0xFFFFFF;
     private static final int ERASE_WIDTH = 30;
+    private static final int UPDATE_FREQUENCY = 999999999; // 4 for realtime.
 
-    private ArrayAdapter<String> data;
     private JunctionActor mActor;
+    private ActivityScript mScript = null;
+    
 	private int currentColor = 0x000000;
 	private int currentWidth = 3;
 	private boolean eraseMode = false;
@@ -91,26 +90,65 @@ public class JXWhiteboardActivity extends Activity{
 	public static final int FIND_BOARDS = 9;
 	public static final int LOAD_BOARD = 10;
 	public static final int SAVE_BOARD = 11;
-	public static final String DEFAULT_HOST = "junction://sb.openjunction.org";
+	public static final String DEFAULT_HOST = "junction://prpl.stanford.edu";
 
     private static final int VIRTUAL_WIDTH = 768;
     private int localWidth = 0;
 
-
-
+    private Nfc mNfc = null;
+    
 	public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		panel = new DrawingPanel(this);
 		setContentView(panel);
+		
+		mNfc = new Nfc(this);
+		
+		mScript = new ActivityScript();
+		mScript.setFriendlyName("JXWhiteboard");
+		JSONObject androidPlatform = new JSONObject();
+		try {
+			androidPlatform.put("package", this.getPackageName());
+			androidPlatform.put("url", "http://openjunction.org/demos/jxwhiteboard.apk");
+		} catch (JSONException e) { }
+		
+		mScript.addRolePlatform("participant", "android", androidPlatform);
+		
+		String appArgument = null;
+		if (getIntent() != null && getIntent().hasExtra("android.intent.extra.APPLICATION_ARGUMENT")) {
+			appArgument = getIntent().getStringExtra("android.intent.extra.APPLICATION_ARGUMENT");
+		}
+		
 		Uri sessionUri;
 		if (AndroidJunctionMaker.isJoinable(this)) {
 			sessionUri = Uri.parse(getIntent().getStringExtra("invitationURI"));
+		} else if (appArgument != null) {
+			// This method will become the preferred way of passing an argument.
+			sessionUri = Uri.parse(appArgument);
 		} else {
-			sessionUri = fixedSessionUri("whiteboard");
+			//sessionUri = fixedSessionUri("whiteboard");
+			sessionUri = newRandomSessionUri();
 		}
 		initJunction(sessionUri, null);
 		bindLiaisonService();
 	}
+	
+	@Override
+	public void onResume() {
+		super.onResume();
+		mNfc.onResume(this);
+	}
+	
+	@Override
+	public void onPause() {
+		super.onPause();
+		mNfc.onPause(this);
+	}
+	
+	@Override
+    protected void onNewIntent(Intent intent) {
+    	if (mNfc.onNewIntent(this, intent)) return;
+    }
 
 	class DrawingPanel extends SurfaceView implements SurfaceHolder.Callback {
 		private List<Integer> currentPoints = new ArrayList<Integer>();
@@ -134,6 +172,23 @@ public class JXWhiteboardActivity extends Activity{
 				else if(event.getAction() == MotionEvent.ACTION_MOVE){
 					currentPoints.add(localToVirt(event.getX()));
 					currentPoints.add(localToVirt(event.getY()));
+					
+					if (currentPoints.size() > UPDATE_FREQUENCY) {
+						if(eraseMode) prop.add(prop.newStroke(ERASE_COLOR, 
+								  ERASE_WIDTH, 
+								  currentPoints));
+						
+						
+						else prop.add(prop.newStroke(currentColor, 
+											 localToVirt(currentWidth), 
+											 currentPoints));
+					
+						Integer pt0 = currentPoints.get(currentPoints.size() - 2);
+						Integer pt1 = currentPoints.get(currentPoints.size() - 1);
+						currentPoints.clear();
+						currentPoints.add(pt0);
+						currentPoints.add(pt1);
+					}
 					repaint(false);
 				}
 				else if(event.getAction() == MotionEvent.ACTION_UP){
@@ -554,8 +609,15 @@ public class JXWhiteboardActivity extends Activity{
 	}
 
 	private Uri newRandomSessionUri(){
-		String randomSession = UUID.randomUUID().toString();
-		return Uri.parse(DEFAULT_HOST + "/" + randomSession );
+		/*
+		String randomSession = UUID.randomUUID().toString().substring(0,8);
+		return Uri.parse(DEFAULT_HOST + "/" + randomSession  + "#xmpp");
+		*/
+
+		SwitchboardConfig config = new BluetoothSwitchboardConfig();
+		URI uri = AndroidJunctionMaker.getInstance(config).generateSessionUri();
+		return Uri.parse(uri.toString());
+		
 	}
 
 	private Uri fixedSessionUri(String sessId){
@@ -610,7 +672,8 @@ public class JXWhiteboardActivity extends Activity{
 		mActor = new JunctionActor("participant"){
 				@Override
 				public void onActivityJoin() {
-					System.out.println("Joined!");
+					doNFCBroadcast();
+					System.out.println("joined!");
 				}
 				@Override
 				public void onMessageReceived(MessageHeader header, JSONObject msg) {
@@ -622,11 +685,20 @@ public class JXWhiteboardActivity extends Activity{
 					extras.add(prop);
 					return extras;
 				}
+				@Override
+				public void onActivityCreate() {
+
+				}
 			};
-		final XMPPSwitchboardConfig sb = new XMPPSwitchboardConfig(uri.getAuthority());
-		sb.setConnectionTimeout(10000);
+			
+		
+		SwitchboardConfig sb = AndroidJunctionMaker.getDefaultSwitchboardConfig(url);
+		if (sb instanceof XMPPSwitchboardConfig) {
+			((XMPPSwitchboardConfig)sb).setConnectionTimeout(10000);
+		}
+
 		try{
-			AndroidJunctionMaker.getInstance(sb).newJunction(url, mActor);
+			AndroidJunctionMaker.getInstance(sb).newJunction(url, mScript, mActor);
 		}
 		catch(JunctionException e){
 			maybeRetryJunction(uri, e);
@@ -697,8 +769,30 @@ public class JXWhiteboardActivity extends Activity{
 	}
 
 
+	private boolean doNFCBroadcast() {
+		if (mActor == null || mActor.getJunction() == null) {
+			return false;
+		}
 
-
+		// hack! old code all over the place, broken whiteboards, etc!
+		String sessionId = mActor.getJunction().getSessionID();
+		String switchboard = mActor.getJunction().getSwitchboard();
+		String webUrl = "http://prpl.stanford.edu/junction/whiteboard2/?jxsessionid="+sessionId+"&jxswitchboard="+switchboard;
+		PlatformReference webReference = new WebPlatformReference(webUrl);
+		PlatformReference androidReference = new AndroidPlatformReference(0x09, getPackageName(), mActor.getJunction().getInvitationURI().toString());
+   		ApplicationManifest appManifest = new ApplicationManifest.Builder()
+   			.addPlatformReference(webReference)
+   			.addPlatformReference(androidReference)
+   			.setName("weScribble")
+   			.create();
+   		
+   		try {
+	   		byte[] appManifestBytes = appManifest.toByteArray();
+	   		mNfc.share(ApplicationManifest.MIME_TYPE, appManifestBytes);
+   		} catch (NoClassDefFoundError e) {}
+   		
+   		return true;
+	}
 }
 
 
