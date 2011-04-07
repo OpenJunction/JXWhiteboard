@@ -67,7 +67,7 @@ public class JXWhiteboardActivity extends Activity {
 
     private static final int ERASE_COLOR = 0xFFFFFF;
     private static final int ERASE_WIDTH = 30;
-    private static final int UPDATE_FREQUENCY = 999999999; // 4 for realtime.
+    private static final int UPDATE_FREQUENCY = 9999999; // 4 for realtime.
 
     private JunctionActor mActor;
     private ActivityScript mScript = null;
@@ -677,7 +677,7 @@ public class JXWhiteboardActivity extends Activity {
 				}
 				@Override
 				public void onMessageReceived(MessageHeader header, JSONObject msg) {
-					System.out.println("Got msg!");	
+					//System.out.println("Got msg!");	
 				}
 				@Override
 				public List<JunctionExtra> getInitialExtras() {
