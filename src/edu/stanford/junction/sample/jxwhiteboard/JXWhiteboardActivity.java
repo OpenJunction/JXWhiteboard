@@ -21,6 +21,7 @@ import edu.stanford.mobisocial.appmanifest.platforms.PlatformReference;
 import edu.stanford.mobisocial.appmanifest.platforms.WebPlatformReference;
 import mobisocial.nfc.Nfc;
 
+import android.util.Log;
 import android.content.ServiceConnection;
 import android.content.ContentValues;
 import android.os.IBinder;
@@ -117,6 +118,7 @@ public class JXWhiteboardActivity extends Activity {
 		String appArgument = null;
 		if (getIntent() != null && getIntent().hasExtra("android.intent.extra.APPLICATION_ARGUMENT")) {
 			appArgument = getIntent().getStringExtra("android.intent.extra.APPLICATION_ARGUMENT");
+            Log.i("JXWhiteboard", "Got app argument: " + appArgument);
 		}
 		
 		Uri sessionUri;
@@ -126,11 +128,14 @@ public class JXWhiteboardActivity extends Activity {
 			// This method will become the preferred way of passing an argument.
 			sessionUri = Uri.parse(appArgument);
 		} else {
+            Log.i("JXWhiteboard", "Got app argument: " + appArgument);
+        
 			//sessionUri = fixedSessionUri("whiteboard");
 			sessionUri = newRandomSessionUri();
 		}
+
 		initJunction(sessionUri, null);
-		bindLiaisonService();
+		//bindLiaisonService();
 	}
 	
 	@Override
@@ -613,11 +618,9 @@ public class JXWhiteboardActivity extends Activity {
 		String randomSession = UUID.randomUUID().toString().substring(0,8);
 		return Uri.parse(DEFAULT_HOST + "/" + randomSession  + "#xmpp");
 		*/
-
-		SwitchboardConfig config = new BluetoothSwitchboardConfig();
+		SwitchboardConfig config = new XMPPSwitchboardConfig();
 		URI uri = AndroidJunctionMaker.getInstance(config).generateSessionUri();
 		return Uri.parse(uri.toString());
-		
 	}
 
 	private Uri fixedSessionUri(String sessId){
@@ -747,7 +750,7 @@ public class JXWhiteboardActivity extends Activity {
 
 	public void onDestroy(){
 		super.onDestroy();
-		unbindService(mConnection);
+		//unbindService(mConnection);
 	}
 
 	private int virtToLocal(float val){

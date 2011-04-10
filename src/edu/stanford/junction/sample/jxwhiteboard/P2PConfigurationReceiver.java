@@ -5,6 +5,7 @@ import edu.stanford.junction.provider.xmpp.XMPPSwitchboardConfig;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.util.Log;
 
 /**
  * A broadcast receiver for configuring an argument that
@@ -16,6 +17,7 @@ public class P2PConfigurationReceiver extends BroadcastReceiver {
 	public void onReceive(Context context, Intent intent) {
 		XMPPSwitchboardConfig xmppConfig = new XMPPSwitchboardConfig("prpl.stanford.edu");
 		String config = AndroidJunctionMaker.getInstance(xmppConfig).generateSessionUri().toString();
+        Log.i("P2PConfigurationReceiver", "Generated session: " + config);
 		setResultData(config);
 	}
 }
