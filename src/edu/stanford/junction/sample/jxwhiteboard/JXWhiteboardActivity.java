@@ -13,6 +13,8 @@ import edu.stanford.junction.api.messaging.MessageHeader;
 import edu.stanford.junction.provider.bluetooth.BluetoothSwitchboardConfig;
 import edu.stanford.junction.provider.xmpp.XMPPSwitchboardConfig;
 import edu.stanford.junction.props2.Prop;
+import edu.stanford.junction.props2.IWithStateAction;
+import edu.stanford.junction.props2.IPropState;
 import edu.stanford.junction.props2.sample.ListState;
 import edu.stanford.junction.props2.IPropChangeListener;
 import edu.stanford.mobisocial.appmanifest.ApplicationManifest;
@@ -68,7 +70,7 @@ public class JXWhiteboardActivity extends Activity {
 
     private static final int ERASE_COLOR = 0xFFFFFF;
     private static final int ERASE_WIDTH = 30;
-    private static final int UPDATE_FREQUENCY = 9999999; // 4 for realtime.
+    private static final int UPDATE_FREQUENCY = 10; // 9999999; // 4 for realtime.
 
     private JunctionActor mActor;
     private ActivityScript mScript = null;
@@ -180,13 +182,13 @@ public class JXWhiteboardActivity extends Activity {
 					
 					if (currentPoints.size() > UPDATE_FREQUENCY) {
 						if(eraseMode) prop.add(prop.newStroke(ERASE_COLOR, 
-								  ERASE_WIDTH, 
-								  currentPoints));
+                                                              ERASE_WIDTH, 
+                                                              currentPoints));
 						
 						
 						else prop.add(prop.newStroke(currentColor, 
-											 localToVirt(currentWidth), 
-											 currentPoints));
+                                                     localToVirt(currentWidth), 
+                                                     currentPoints));
 					
 						Integer pt0 = currentPoints.get(currentPoints.size() - 2);
 						Integer pt1 = currentPoints.get(currentPoints.size() - 1);
@@ -212,8 +214,8 @@ public class JXWhiteboardActivity extends Activity {
 			}
 		}
 
-		protected void paintState(Canvas canvas){
-			Paint mPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+		protected void paintState(final Canvas canvas){
+			final Paint mPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 			mPaint.setDither(true);
 			mPaint.setStyle(Paint.Style.STROKE);
 			mPaint.setStrokeJoin(Paint.Join.ROUND);
@@ -223,13 +225,19 @@ public class JXWhiteboardActivity extends Activity {
 			canvas.drawColor(0xFFFFFFFF);
 
 			// paint prop state
-			for (JSONObject o : prop.items()) {
-				int color = Integer.parseInt(o.optString("color").substring(1), 16);
-				mPaint.setColor(0xFF000000 | color);
-				mPaint.setStrokeWidth(virtToLocal(o.optInt("width")));
-				JSONArray points = o.optJSONArray("points");
-				paintStroke(canvas, mPaint, points);
-			}
+            prop.withState(new IWithStateAction<Void>(){
+                    public Void run(IPropState state){
+                        Collection<JSONObject> items =  ((ListState)state).items();
+                        for (JSONObject o : prop.items()) {
+                            int color = Integer.parseInt(o.optString("color").substring(1), 16);
+                            mPaint.setColor(0xFF000000 | color);
+                            mPaint.setStrokeWidth(virtToLocal(o.optInt("width")));
+                            JSONArray points = o.optJSONArray("points");
+                            paintStroke(canvas, mPaint, points);
+                        }
+                        return null;
+                    }
+                });
 			paintCurrentStroke(canvas);
 		}
 
@@ -615,8 +623,8 @@ public class JXWhiteboardActivity extends Activity {
 
 	private Uri newRandomSessionUri(){
 		/*
-		String randomSession = UUID.randomUUID().toString().substring(0,8);
-		return Uri.parse(DEFAULT_HOST + "/" + randomSession  + "#xmpp");
+          String randomSession = UUID.randomUUID().toString().substring(0,8);
+          return Uri.parse(DEFAULT_HOST + "/" + randomSession  + "#xmpp");
 		*/
 		SwitchboardConfig config = new XMPPSwitchboardConfig();
 		URI uri = AndroidJunctionMaker.getInstance(config).generateSessionUri();
@@ -647,15 +655,11 @@ public class JXWhiteboardActivity extends Activity {
 			prop = new WhiteboardProp("whiteboard_model");
 		}
 		prop.addChangeListener(new IPropChangeListener(){
-				public String getType(){ return Prop.EVT_CHANGE; }
+				public String getType(){ return Prop.EVT_ANY; }
 				public void onChange(Object data){
-					panel.repaint(true);
-				}
-			});
-		prop.addChangeListener(new IPropChangeListener(){
-				public String getType(){ return Prop.EVT_SYNC; }
-				public void onChange(Object data){
-					panel.repaint(true);
+                    JXWhiteboardActivity.this.runOnUiThread(new Runnable(){
+                            public void run(){ panel.repaint(true); }
+                        });
 				}
 			});
 
