@@ -627,7 +627,6 @@ public class JXWhiteboardActivity extends Activity {
           return Uri.parse(DEFAULT_HOST + "/" + randomSession  + "#xmpp");
 		*/
 		SwitchboardConfig config = new XMPPSwitchboardConfig("prpl.stanford.edu");
-		//SwitchboardConfig config = new BluetoothSwitchboardConfig();
 		URI uri = AndroidJunctionMaker.getInstance(config).generateSessionUri();
 		return Uri.parse(uri.toString());
 	}
