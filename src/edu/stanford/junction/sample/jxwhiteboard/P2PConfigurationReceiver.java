@@ -19,5 +19,6 @@ public class P2PConfigurationReceiver extends BroadcastReceiver {
 		String config = AndroidJunctionMaker.getInstance(xmppConfig).generateSessionUri().toString();
         Log.i("P2PConfigurationReceiver", "Generated session: " + config);
 		setResultData(config);
+		getResultExtras(true).putString("download", "http://openjunction.org/demos/jxwhiteboard.apk");
 	}
 }
