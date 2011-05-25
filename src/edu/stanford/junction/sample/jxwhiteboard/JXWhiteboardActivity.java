@@ -150,6 +150,7 @@ public class JXWhiteboardActivity extends Activity {
 	public void onPause() {
 		super.onPause();
 		mNfc.onPause(this);
+		store();
 	}
 	
 	@Override
@@ -348,8 +349,28 @@ public class JXWhiteboardActivity extends Activity {
 		}
 	}
 
-	private void shareSnapshot(){
-		if(mBackgroundImage != null){
+	private void shareSnapshot() {
+	    Snapshot snapshot = captureSnapshot();
+
+	    final Intent shareIntent = new Intent(android.content.Intent.ACTION_SEND);
+	    shareIntent.putExtra(Intent.EXTRA_SUBJECT, "Whiteboard Snapshot");
+        shareIntent.putExtra(Intent.EXTRA_STREAM, snapshot.uri);
+        shareIntent.setType(snapshot.type);
+        startActivity(Intent.createChooser(shareIntent, "Share Snapshot..."));
+	}
+
+	class Snapshot {
+	    String type;
+	    Uri uri;
+	    
+	    public Snapshot(String type, Uri uri) {
+	        this.type = type;
+	        this.uri = uri;
+	    }
+	}
+
+	private Snapshot captureSnapshot() {
+		if(mBackgroundImage != null) {
 			String filename = "jxwhiteboard_tmp_output.png";
 			// If sd card is available, we'll write the full quality image there
 			// before sending..
@@ -369,24 +390,18 @@ public class JXWhiteboardActivity extends Activity {
 					}
 					catch (IOException ignore) {}
 				}
-				final Intent shareIntent = new Intent(android.content.Intent.ACTION_SEND);
-				shareIntent.putExtra(Intent.EXTRA_SUBJECT, "Whiteboard Snapshot");
-				shareIntent.putExtra(Intent.EXTRA_STREAM, Uri.fromFile(png));
-				shareIntent.setType("image/png");
-				startActivity(Intent.createChooser(shareIntent, "Share Snapshot..."));
+				return new Snapshot("image/png", Uri.fromFile(png));
+				
 			}
 			// Otherwise, use mediastore, which unfortunately compresses the hell
 			// out of the image.
 			else{
 				String url = MediaStore.Images.Media.insertImage(
 					getContentResolver(), mBackgroundImage, filename, null);
-				Intent sendIntent = new Intent(Intent.ACTION_SEND);
-				sendIntent.putExtra(Intent.EXTRA_SUBJECT, "Whiteboard Snapshot");
-				sendIntent.putExtra(Intent.EXTRA_STREAM, Uri.parse(url));
-				sendIntent.setType("image/jpg");
-				startActivity(Intent.createChooser(sendIntent, "Share Snapshot..."));
+				return new Snapshot("image/jpg", Uri.parse(url));
 			}
 		}
+		return null;
 	}
 
 	public boolean onCreateOptionsMenu(Menu menu){
@@ -799,6 +814,10 @@ public class JXWhiteboardActivity extends Activity {
    		} catch (NoClassDefFoundError e) {}
    		
    		return true;
+	}
+
+	private void store() {
+	     // TODO
 	}
 }
 
