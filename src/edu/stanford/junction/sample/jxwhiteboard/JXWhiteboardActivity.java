@@ -63,6 +63,7 @@ public class JXWhiteboardActivity extends Activity {
 
 	private WhiteboardProp prop;
 
+	public static final String TAG = "whiteboard";
 	public static final String EXTRA_APP_ARGUMENT = "android.intent.extra.APPLICATION_ARGUMENT";
     private static final int REQUEST_CODE_PICK_COLOR = 1;
     private static final int REQUEST_CODE_PICK_LINE_WIDTH = 2;
@@ -121,7 +122,7 @@ public class JXWhiteboardActivity extends Activity {
     		    try {
     		        JSONObject state = new JSONObject(mDbIntent.getStringExtra("mobisocial.db.STATE"));
     		        mSavedBoard = new SavedBoard("loaded", state.optString("data"), state.optLong("seq"));
-    		        Log.d("whiteboard", "loading " + mSavedBoard.data + ", " + mSavedBoard.seqNum);
+    		        Log.d(TAG, "loading " + mSavedBoard.data + ", " + mSavedBoard.seqNum);
     		    } catch (JSONException e) {}
 		    }
 		}
@@ -842,9 +843,10 @@ public class JXWhiteboardActivity extends Activity {
             // TODO: Whiteboard content provider.
             try {
                 JSONObject state = new JSONObject();
-                state.put("data", this.prop.stateToJSON().toString());
-                state.put("seq", this.prop.getSequenceNum());
+                state.put("data", prop.stateToJSON().toString());
+                state.put("seq", prop.getSequenceNum());
                 store.putExtra("mobisocial.db.STATE", state.toString());
+                Log.d(TAG, "storing state " + state);
             } catch (JSONException e) {}
             sendBroadcast(store);
 	    }
