@@ -99,14 +99,28 @@ public class JXWhiteboardActivity extends Activity {
     private int localWidth = 0;
 
     private Nfc mNfc = null;
-    
+    private Uri mDbFeed = null;
+    private Intent mDbIntent = null;
+    private JSONObject mState = null;
+
 	public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		panel = new DrawingPanel(this);
 		setContentView(panel);
 		
 		mNfc = new Nfc(this);
-		
+
+		// Were we launched from DungBeetle?
+		if (getIntent().hasExtra("mobisocial.db.FEED")) {
+		    mDbIntent = getIntent();
+		    mDbFeed = mDbIntent.getParcelableExtra("mobisocial.db.FEED");
+		    if (mDbIntent.hasExtra("mobisocial.db.STATE")) {
+    		    try {
+    		        mState = new JSONObject(mDbIntent.getStringExtra("mobisocial.db.STATE"));
+    		    } catch (JSONException e) {}
+		    }
+		}
+
 		mScript = new ActivityScript();
 		mScript.setFriendlyName("JXWhiteboard");
 		JSONObject androidPlatform = new JSONObject();
@@ -136,7 +150,7 @@ public class JXWhiteboardActivity extends Activity {
 			sessionUri = newRandomSessionUri();
 		}
 
-		initJunction(sessionUri, null);
+		initJunction(sessionUri, null, mState);
 		//bindLiaisonService();
 	}
 	
@@ -585,7 +599,7 @@ public class JXWhiteboardActivity extends Activity {
 		alert.setPositiveButton("Ok", new DialogInterface.OnClickListener() {  
 				public void onClick(DialogInterface dialog, int whichButton){  
 					String value = input.getText().toString();
-					initJunction(Uri.parse(DEFAULT_HOST + "/" + value), null);
+					initJunction(Uri.parse(DEFAULT_HOST + "/" + value), null, null);
 					panel.repaint(true);
 				}  
 			});  
@@ -618,7 +632,7 @@ public class JXWhiteboardActivity extends Activity {
 			if(resultCode == RESULT_OK){
 				String url = data.getStringExtra(
 					WhiteboardIntents.EXTRA_SESSION_URL);
-				initJunction(Uri.parse(url), null);
+				initJunction(Uri.parse(url), null, null);
 			}
 			break;
 		case REQUEST_CODE_LOAD_WHITEBOARD:
@@ -630,7 +644,7 @@ public class JXWhiteboardActivity extends Activity {
 				long seqNum = data.getLongExtra(
 					WhiteboardIntents.EXTRA_SAVED_BOARD_SEQNUM, 0);
 				SavedBoard b = new SavedBoard(name, d, seqNum);
-				initJunction(newRandomSessionUri(), b);
+				initJunction(newRandomSessionUri(), b, null);
 			}
 			break;
 		}
@@ -651,9 +665,13 @@ public class JXWhiteboardActivity extends Activity {
 	}
 
 
-	private void initJunction(Uri uri, SavedBoard savedBoard){
+	private void initJunction(Uri uri, SavedBoard savedBoard, JSONObject savedState){
 		if(savedBoard != null){
-			JSONObject obj = savedBoard.obj();
+		    savedState = savedBoard.obj();
+		}
+
+		if (savedState != null) {
+			JSONObject obj = savedState;
 			JSONArray items = obj.optJSONArray("items");
 			ArrayList<JSONObject> strokes = new ArrayList<JSONObject>();
 			if(items != null){
@@ -735,7 +753,7 @@ public class JXWhiteboardActivity extends Activity {
 						 ". Retry connection?");
 		alert.setPositiveButton("Ok", new DialogInterface.OnClickListener() {  
 				public void onClick(DialogInterface dialog, int whichButton){  
-					initJunction(uri, null);
+					initJunction(uri, null, null);
 				}
 			});  
 		alert.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {  
@@ -817,7 +835,14 @@ public class JXWhiteboardActivity extends Activity {
 	}
 
 	private void store() {
-	     // TODO
+	    if (mDbIntent != null) {
+            Intent store = mDbIntent;
+            store.setAction("mobisocial.db.PUBLISH");
+            store.setData(mDbFeed);
+            // TODO: Whiteboard content provider.
+            store.putExtra("mobisocial.db.STATE", this.prop.stateToJSON().toString());
+            sendBroadcast(store);
+	    }
 	}
 }
 
