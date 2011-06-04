@@ -53,6 +53,7 @@ import android.net.Uri;
 import android.database.sqlite.*;
 
 import org.json.*;
+import org.xbill.DNS.MFRecord;
 
 import java.net.*;
 import java.io.*;
@@ -62,6 +63,7 @@ public class JXWhiteboardActivity extends Activity {
 
 	private WhiteboardProp prop;
 
+	public static final String EXTRA_APP_ARGUMENT = "android.intent.extra.APPLICATION_ARGUMENT";
     private static final int REQUEST_CODE_PICK_COLOR = 1;
     private static final int REQUEST_CODE_PICK_LINE_WIDTH = 2;
     private static final int REQUEST_CODE_FIND_WHITEBOARDS = 3;
@@ -101,7 +103,8 @@ public class JXWhiteboardActivity extends Activity {
     private Nfc mNfc = null;
     private Uri mDbFeed = null;
     private Intent mDbIntent = null;
-    private JSONObject mState = null;
+    private SavedBoard mSavedBoard = null;
+    private String mAppArgument = null;
 
 	public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
@@ -116,7 +119,9 @@ public class JXWhiteboardActivity extends Activity {
 		    mDbFeed = mDbIntent.getParcelableExtra("mobisocial.db.FEED");
 		    if (mDbIntent.hasExtra("mobisocial.db.STATE")) {
     		    try {
-    		        mState = new JSONObject(mDbIntent.getStringExtra("mobisocial.db.STATE"));
+    		        JSONObject state = new JSONObject(mDbIntent.getStringExtra("mobisocial.db.STATE"));
+    		        mSavedBoard = new SavedBoard("loaded", state.optString("data"), state.optLong("seq"));
+    		        Log.d("whiteboard", "loading " + mSavedBoard.data + ", " + mSavedBoard.seqNum);
     		    } catch (JSONException e) {}
 		    }
 		}
@@ -131,26 +136,24 @@ public class JXWhiteboardActivity extends Activity {
 		
 		mScript.addRolePlatform("participant", "android", androidPlatform);
 		
-		String appArgument = null;
-		if (getIntent() != null && getIntent().hasExtra("android.intent.extra.APPLICATION_ARGUMENT")) {
-			appArgument = getIntent().getStringExtra("android.intent.extra.APPLICATION_ARGUMENT");
-            Log.i("JXWhiteboard", "Got app argument: " + appArgument);
+		if (getIntent() != null && getIntent().hasExtra(EXTRA_APP_ARGUMENT)) {
+		    mAppArgument = getIntent().getStringExtra(EXTRA_APP_ARGUMENT);
+            Log.i("JXWhiteboard", "Got app argument: " + mAppArgument);
 		}
 		
 		Uri sessionUri;
 		if (AndroidJunctionMaker.isJoinable(this)) {
 			sessionUri = Uri.parse(getIntent().getStringExtra("invitationURI"));
-		} else if (appArgument != null) {
+		} else if (mAppArgument != null) {
 			// This method will become the preferred way of passing an argument.
-			sessionUri = Uri.parse(appArgument);
+			sessionUri = Uri.parse(mAppArgument);
 		} else {
-            Log.i("JXWhiteboard", "Got app argument: " + appArgument);
+            Log.i("JXWhiteboard", "Got app argument: " + mAppArgument);
         
 			//sessionUri = fixedSessionUri("whiteboard");
 			sessionUri = newRandomSessionUri();
 		}
-
-		initJunction(sessionUri, null, mState);
+		initJunction(sessionUri, mSavedBoard);
 		//bindLiaisonService();
 	}
 	
@@ -599,7 +602,7 @@ public class JXWhiteboardActivity extends Activity {
 		alert.setPositiveButton("Ok", new DialogInterface.OnClickListener() {  
 				public void onClick(DialogInterface dialog, int whichButton){  
 					String value = input.getText().toString();
-					initJunction(Uri.parse(DEFAULT_HOST + "/" + value), null, null);
+					initJunction(Uri.parse(DEFAULT_HOST + "/" + value), null);
 					panel.repaint(true);
 				}  
 			});  
@@ -632,7 +635,7 @@ public class JXWhiteboardActivity extends Activity {
 			if(resultCode == RESULT_OK){
 				String url = data.getStringExtra(
 					WhiteboardIntents.EXTRA_SESSION_URL);
-				initJunction(Uri.parse(url), null, null);
+				initJunction(Uri.parse(url), null);
 			}
 			break;
 		case REQUEST_CODE_LOAD_WHITEBOARD:
@@ -644,7 +647,7 @@ public class JXWhiteboardActivity extends Activity {
 				long seqNum = data.getLongExtra(
 					WhiteboardIntents.EXTRA_SAVED_BOARD_SEQNUM, 0);
 				SavedBoard b = new SavedBoard(name, d, seqNum);
-				initJunction(newRandomSessionUri(), b, null);
+				initJunction(newRandomSessionUri(), b);
 			}
 			break;
 		}
@@ -665,13 +668,9 @@ public class JXWhiteboardActivity extends Activity {
 	}
 
 
-	private void initJunction(Uri uri, SavedBoard savedBoard, JSONObject savedState){
+	private void initJunction(Uri uri, SavedBoard savedBoard){
 		if(savedBoard != null){
-		    savedState = savedBoard.obj();
-		}
-
-		if (savedState != null) {
-			JSONObject obj = savedState;
+			JSONObject obj = savedBoard.obj();
 			JSONArray items = obj.optJSONArray("items");
 			ArrayList<JSONObject> strokes = new ArrayList<JSONObject>();
 			if(items != null){
@@ -753,7 +752,7 @@ public class JXWhiteboardActivity extends Activity {
 						 ". Retry connection?");
 		alert.setPositiveButton("Ok", new DialogInterface.OnClickListener() {  
 				public void onClick(DialogInterface dialog, int whichButton){  
-					initJunction(uri, null, null);
+					initJunction(uri, null);
 				}
 			});  
 		alert.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {  
@@ -836,13 +835,23 @@ public class JXWhiteboardActivity extends Activity {
 
 	private void store() {
 	    if (mDbIntent != null) {
-            Intent store = mDbIntent;
-            store.setAction("mobisocial.db.PUBLISH");
-            store.setData(mDbFeed);
+            Intent store = new Intent("mobisocial.db.action.PUBLISH");
+            store.putExtra("mobisocial.db.FEED", mDbFeed);
+            store.putExtra("mobisocial.db.PKG", getPackageName());
+            store.putExtra(EXTRA_APP_ARGUMENT, mAppArgument);
             // TODO: Whiteboard content provider.
-            store.putExtra("mobisocial.db.STATE", this.prop.stateToJSON().toString());
+            try {
+                JSONObject state = new JSONObject();
+                state.put("data", this.prop.stateToJSON().toString());
+                state.put("seq", this.prop.getSequenceNum());
+                store.putExtra("mobisocial.db.STATE", state.toString());
+            } catch (JSONException e) {}
             sendBroadcast(store);
 	    }
+	}
+
+	private void toast(final String text) {
+	    Toast.makeText(this, text, Toast.LENGTH_SHORT).show();
 	}
 }
 
