@@ -837,9 +837,7 @@ public class JXWhiteboardActivity extends Activity {
 	private void store() {
 	    if (mDbIntent != null) {
             Intent store = new Intent("mobisocial.db.action.PUBLISH");
-            store.putExtra("mobisocial.db.FEED", mDbFeed);
-            store.putExtra("mobisocial.db.PKG", getPackageName());
-            store.putExtra(EXTRA_APP_ARGUMENT, mAppArgument);
+            store.putExtras(mDbIntent.getExtras());
             // TODO: Whiteboard content provider.
             try {
                 JSONObject state = new JSONObject();
