@@ -1,6 +1,7 @@
 package edu.stanford.junction.sample.jxwhiteboard;
 
 import edu.stanford.junction.sample.jxwhiteboard.intents.WhiteboardIntents;
+import edu.stanford.junction.sample.jxwhiteboard.util.Base64;
 
 import edu.stanford.junction.android.AndroidJunctionMaker;
 import edu.stanford.junction.Junction;
@@ -42,6 +43,7 @@ import android.widget.Toast;
 import android.os.Process;
 import android.graphics.Canvas;
 import android.graphics.Bitmap;
+import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
@@ -106,6 +108,7 @@ public class JXWhiteboardActivity extends Activity {
     private Intent mDbIntent = null;
     private SavedBoard mSavedBoard = null;
     private String mAppArgument = null;
+    private boolean mPausingInternal = false;
 
 	public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
@@ -168,7 +171,10 @@ public class JXWhiteboardActivity extends Activity {
 	public void onPause() {
 		super.onPause();
 		mNfc.onPause(this);
-		store();
+		if (!mPausingInternal && mDbIntent != null) {
+		    sendToDungbeetle();
+		}
+		mPausingInternal = false;
 	}
 	
 	@Override
@@ -387,6 +393,24 @@ public class JXWhiteboardActivity extends Activity {
 	    }
 	}
 
+	private String captureThumbnailBase64() {
+	    Bitmap bitmap = mBackgroundImage;
+        int width = bitmap.getWidth();
+        int height = bitmap.getHeight();
+
+        int targetHeight= 240;
+        float scale = ((float) targetHeight) / height;
+        Matrix matrix = new Matrix();
+        matrix.postScale(scale, scale);
+
+        Bitmap resizedBitmap = Bitmap.createBitmap(bitmap, 0, 0, width, height, matrix, true);
+
+        ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+        resizedBitmap.compress(Bitmap.CompressFormat.PNG, 80, byteStream);
+        byte[] data = byteStream.toByteArray();
+        return Base64.encodeToString(data, false);
+	}
+
 	private Snapshot captureSnapshot() {
 		if(mBackgroundImage != null) {
 			String filename = "jxwhiteboard_tmp_output.png";
@@ -458,9 +482,11 @@ public class JXWhiteboardActivity extends Activity {
 	public boolean onOptionsItemSelected (MenuItem item){
 		switch (item.getItemId()){
 		case SET_COLOR:
+		    mPausingInternal = true;
 			pickColor();
 			return true;
 		case SET_LINE_WIDTH:
+		    mPausingInternal = true;
 			pickLineWidth();
 			return true;
 		case START_ERASER:
@@ -473,6 +499,7 @@ public class JXWhiteboardActivity extends Activity {
 			prop.clear();
 			return true;
 		case SHARE_SNAPSHOT:
+		    mPausingInternal = true;
 			shareSnapshot();
 			return true;
 		case ADVERTISE:
@@ -834,20 +861,20 @@ public class JXWhiteboardActivity extends Activity {
    		return true;
 	}
 
-	private void store() {
-	    if (mDbIntent != null) {
-            Intent store = new Intent("mobisocial.db.action.PUBLISH");
-            store.putExtras(mDbIntent.getExtras());
-            // TODO: Whiteboard content provider.
-            try {
-                JSONObject state = new JSONObject();
-                state.put("data", prop.stateToJSON().toString());
-                state.put("seq", prop.getSequenceNum());
-                store.putExtra("mobisocial.db.STATE", state.toString());
-                Log.d(TAG, "storing state " + state);
-            } catch (JSONException e) {}
-            sendBroadcast(store);
-	    }
+	private void sendToDungbeetle() {
+        Intent store = new Intent("mobisocial.db.action.PUBLISH");
+        store.putExtras(mDbIntent.getExtras());
+        // TODO: Whiteboard content provider.
+        try {
+            JSONObject state = new JSONObject();
+            state.put("data", prop.stateToJSON().toString());
+            state.put("seq", prop.getSequenceNum());
+            store.putExtra("mobisocial.db.STATE", state.toString());
+
+            store.putExtra("mobisocial.db.THUMBNAIL_IMAGE", captureThumbnailBase64());
+            Log.d(TAG, "storing state " + state);
+        } catch (JSONException e) {}
+        sendBroadcast(store);
 	}
 
 	private void toast(final String text) {
