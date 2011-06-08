@@ -622,6 +622,7 @@ public class JXWhiteboardActivity extends Activity {
 		catch(Exception e){
 			Log.e("JXWhiteboardActivity", e.toString());
 		}
+		helper.close();
 	}
 
 	private void joinByName(){

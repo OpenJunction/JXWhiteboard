@@ -5,7 +5,6 @@ import edu.stanford.junction.sample.jxwhiteboard.intents.WhiteboardIntents;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.ArrayAdapter;
-import android.os.Handler;
 import android.app.ListActivity;
 import android.widget.AdapterView.OnItemClickListener;
 import android.widget.AdapterView;
@@ -15,20 +14,16 @@ import android.database.sqlite.*;
 import android.database.Cursor;
 
 import java.util.*;
-import java.text.DateFormat;
-
 
 public class SavedBoardsBrowserActivity extends ListActivity implements OnItemClickListener{
 
-    private Handler mMainHandler;
     private ArrayAdapter<SavedBoard> mBoards;
-	private final DateFormat dateFormat = DateFormat.getDateTimeInstance();
-
+	SQLiteOpenHelper mHelper;
 
     public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
-		SQLiteOpenHelper helper = new BoardsDBHelper(this);
-		SQLiteDatabase db = helper.getReadableDatabase();
+		mHelper = new BoardsDBHelper(this);
+		SQLiteDatabase db = mHelper.getReadableDatabase();
 		List<SavedBoard> boards = selectAllBoards(db);
 		mBoards = new ArrayAdapter<SavedBoard>(this, 
 											   android.R.layout.simple_list_item_1,
@@ -73,6 +68,11 @@ public class SavedBoardsBrowserActivity extends ListActivity implements OnItemCl
 		super.onDestroy();
 	}
 
+	@Override
+	public void finish() {
+		mHelper.close();
+		super.finish();
+	}
 }
 
 
