@@ -2,32 +2,18 @@ package edu.stanford.junction.sample.jxwhiteboard;
 
 import edu.stanford.junction.sample.jxwhiteboard.intents.WhiteboardIntents;
 
-import android.app.Activity;
-import android.app.NotificationManager;
-import android.content.Context;
 import android.os.Bundle;
 import android.view.View;
-import android.widget.TextView;
-import android.widget.Toast;
 import android.widget.ArrayAdapter;
-import android.os.IBinder;
 import android.os.Handler;
-import android.os.Message;
-import android.content.ServiceConnection;
-import android.app.Service;
 import android.app.ListActivity;
 import android.widget.AdapterView.OnItemClickListener;
 import android.widget.AdapterView;
 import android.content.Intent;
-import android.content.ComponentName;
 import android.util.Log;
 import android.database.sqlite.*;
 import android.database.Cursor;
 
-import edu.stanford.junction.extra.JSONObjWrapper;
-
-import org.json.JSONObject;
-import java.net.URI;
 import java.util.*;
 import java.text.DateFormat;
 

@@ -14,6 +14,7 @@ import edu.stanford.junction.props2.sample.ListProp;
 import edu.stanford.junction.props2.sample.ListState;
 
 public class WhiteboardProp extends ListProp {
+    final Random mRandom = new Random();
 
 	public WhiteboardProp(String propName){
 		super(propName, propName + (new Random()).nextInt());
@@ -26,7 +27,7 @@ public class WhiteboardProp extends ListProp {
 	public JSONObject newStroke(int color, int width, List<Integer> points){
 		JSONObject obj = new JSONObject();
 		try{
-			obj.put("id", (new Random()).nextInt());
+			obj.put("id", mRandom.nextInt());
 			obj.put("color", "#" + padToSixChars(Integer.toHexString(color)));
 			obj.put("width", width);
 			JSONArray a = new JSONArray();

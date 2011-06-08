@@ -125,7 +125,7 @@ public class JXWhiteboardActivity extends Activity {
     		    try {
     		        JSONObject state = new JSONObject(mDbIntent.getStringExtra("mobisocial.db.STATE"));
     		        mSavedBoard = new SavedBoard("loaded", state.optString("data"), state.optLong("seq"));
-    		        Log.d(TAG, "loading " + mSavedBoard.data + ", " + mSavedBoard.seqNum);
+    		        Log.d(TAG, "loading whiteboard state " + mSavedBoard.data + ", " + mSavedBoard.seqNum);
     		    } catch (JSONException e) {}
 		    }
 		}
@@ -509,6 +509,7 @@ public class JXWhiteboardActivity extends Activity {
 			findBoards();
 			return true;
 		case LOAD_BOARD:
+		    mPausingInternal = true;
 			loadSavedBoard();
 			return true;
 		case SAVE_BOARD:
@@ -591,7 +592,10 @@ public class JXWhiteboardActivity extends Activity {
 			alert.setPositiveButton("Ok", new DialogInterface.OnClickListener() {  
 					public void onClick(DialogInterface dialog, int whichButton){
 						String name = input.getText().toString();
-						saveBoardToDB(name, prop.stateToJSON(), prop.getSequenceNum());
+						JSONObject state = prop.stateToJSON();
+						long seq = prop.getSequenceNum();
+						Log.d(TAG, "saving whiteboard state " + state);
+						saveBoardToDB(name, state, seq);
 						Toast.makeText(JXWhiteboardActivity.this, 
 									   "Saved", 
 									   Toast.LENGTH_SHORT).show();
@@ -674,6 +678,7 @@ public class JXWhiteboardActivity extends Activity {
 					WhiteboardIntents.EXTRA_SAVED_BOARD_DATA);
 				long seqNum = data.getLongExtra(
 					WhiteboardIntents.EXTRA_SAVED_BOARD_SEQNUM, 0);
+				Log.d(TAG, "loading: " + seqNum + ", " + d);
 				SavedBoard b = new SavedBoard(name, d, seqNum);
 				initJunction(newRandomSessionUri(), b);
 			}

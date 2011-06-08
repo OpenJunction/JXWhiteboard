@@ -1,36 +1,23 @@
 package edu.stanford.junction.sample.jxwhiteboard;
 
 import android.app.Service;  
-import android.content.Intent;  
-import android.os.Bundle;  
-import android.util.Log;  
-import android.view.View;  
-import android.webkit.WebView;  
-import android.widget.Button;  
-import android.widget.EditText;  
-import android.widget.Toast;  
-import android.view.View.OnClickListener;  
+import android.content.Intent;    
+import android.util.Log;   
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Message;
 import android.os.IBinder;
 import android.os.Binder;
 
-import android.util.Log;
-
 import org.json.*;
 import java.net.*;  
 import java.util.*;  
 
+import edu.stanford.junction.addon.JSONObjWrapper;
 import edu.stanford.junction.android.AndroidJunctionMaker;
-import edu.stanford.junction.Junction;
 import edu.stanford.junction.api.activity.JunctionActor;
-import edu.stanford.junction.api.activity.JunctionExtra;
 import edu.stanford.junction.api.messaging.MessageHeader;
 import edu.stanford.junction.provider.xmpp.XMPPSwitchboardConfig;
-import edu.stanford.junction.extra.JSONObjWrapper;
-
-
 
 public class LiaisonService extends Service {
 
