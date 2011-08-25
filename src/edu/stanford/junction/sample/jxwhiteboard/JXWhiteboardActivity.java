@@ -1,65 +1,75 @@
 package edu.stanford.junction.sample.jxwhiteboard;
 
-import edu.stanford.junction.sample.jxwhiteboard.intents.WhiteboardIntents;
-import edu.stanford.junction.sample.jxwhiteboard.util.Base64;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 
-import edu.stanford.junction.android.AndroidJunctionMaker;
+import mobisocial.nfc.Nfc;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.app.ProgressDialog;
+import android.content.ComponentName;
+import android.content.ContentValues;
+import android.content.Context;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.ServiceConnection;
+import android.database.sqlite.SQLiteDatabase;
+import android.database.sqlite.SQLiteOpenHelper;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Matrix;
+import android.graphics.Paint;
+import android.net.Uri;
+import android.os.AsyncTask;
+import android.os.Bundle;
+import android.os.Environment;
+import android.os.Handler;
+import android.os.IBinder;
+import android.os.Looper;
+import android.os.Message;
+import android.os.Process;
+import android.provider.MediaStore;
+import android.util.Log;
+import android.view.Menu;
+import android.view.MenuItem;
+import android.view.MotionEvent;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
+import android.view.View;
+import android.widget.EditText;
+import android.widget.Toast;
 import edu.stanford.junction.Junction;
 import edu.stanford.junction.JunctionException;
 import edu.stanford.junction.SwitchboardConfig;
+import edu.stanford.junction.android.AndroidJunctionMaker;
 import edu.stanford.junction.api.activity.ActivityScript;
 import edu.stanford.junction.api.activity.JunctionActor;
 import edu.stanford.junction.api.activity.JunctionExtra;
 import edu.stanford.junction.api.messaging.MessageHeader;
-import edu.stanford.junction.provider.bluetooth.BluetoothSwitchboardConfig;
-import edu.stanford.junction.provider.xmpp.XMPPSwitchboardConfig;
-import edu.stanford.junction.props2.Prop;
-import edu.stanford.junction.props2.IWithStateAction;
-import edu.stanford.junction.props2.IPropState;
-import edu.stanford.junction.props2.sample.ListState;
 import edu.stanford.junction.props2.IPropChangeListener;
+import edu.stanford.junction.props2.IPropState;
+import edu.stanford.junction.props2.IWithStateAction;
+import edu.stanford.junction.props2.Prop;
+import edu.stanford.junction.props2.sample.ListState;
+import edu.stanford.junction.provider.xmpp.XMPPSwitchboardConfig;
+import edu.stanford.junction.sample.jxwhiteboard.intents.WhiteboardIntents;
+import edu.stanford.junction.sample.jxwhiteboard.util.Base64;
 import edu.stanford.mobisocial.appmanifest.ApplicationManifest;
 import edu.stanford.mobisocial.appmanifest.platforms.AndroidPlatformReference;
 import edu.stanford.mobisocial.appmanifest.platforms.PlatformReference;
 import edu.stanford.mobisocial.appmanifest.platforms.WebPlatformReference;
-import mobisocial.nfc.Nfc;
-
-import android.util.Log;
-import android.content.ServiceConnection;
-import android.content.ContentValues;
-import android.os.IBinder;
-import android.app.Activity;
-import android.app.AlertDialog;
-import android.content.DialogInterface;
-import android.content.Context;
-import android.content.ComponentName;
-import android.os.Bundle;
-import android.os.Environment;
-import android.view.View;
-import android.view.Menu;
-import android.view.MenuItem;
-import android.widget.EditText;
-import android.widget.Toast;
-import android.os.Process;
-import android.graphics.Canvas;
-import android.graphics.Bitmap;
-import android.graphics.Matrix;
-import android.graphics.Paint;
-import android.view.MotionEvent;
-import android.view.SurfaceHolder;
-import android.view.SurfaceView;
-import android.content.Intent;
-import android.provider.MediaStore;
-import android.util.Log;
-import android.net.Uri;
-import android.database.sqlite.*;
-
-import org.json.*;
-import org.xbill.DNS.MFRecord;
-
-import java.net.*;
-import java.io.*;
-import java.util.*;
 
 public class JXWhiteboardActivity extends Activity {
 
@@ -69,7 +79,6 @@ public class JXWhiteboardActivity extends Activity {
 	public static final String EXTRA_APP_ARGUMENT = "android.intent.extra.APPLICATION_ARGUMENT";
     private static final int REQUEST_CODE_PICK_COLOR = 1;
     private static final int REQUEST_CODE_PICK_LINE_WIDTH = 2;
-    private static final int REQUEST_CODE_FIND_WHITEBOARDS = 3;
     private static final int REQUEST_CODE_LOAD_WHITEBOARD = 4;
 
 
@@ -85,6 +94,7 @@ public class JXWhiteboardActivity extends Activity {
 	private boolean eraseMode = false;
 	private Bitmap mBackgroundImage = null;
 	private DrawingPanel panel = null;
+	private PropUpdateThread mPropUpdateThread;
 
 	public static final int SET_COLOR = 0;
 	public static final int SET_LINE_WIDTH = 1;
@@ -93,9 +103,6 @@ public class JXWhiteboardActivity extends Activity {
 	public static final int CLEAR = 4;
 	public static final int EXIT = 5;
 	public static final int SHARE_SNAPSHOT = 6;
-	public static final int ADVERTISE = 7;
-	public static final int JOIN_BY_NAME = 8;
-	public static final int FIND_BOARDS = 9;
 	public static final int LOAD_BOARD = 10;
 	public static final int SAVE_BOARD = 11;
 	public static final String DEFAULT_HOST = "junction://prpl.stanford.edu";
@@ -109,10 +116,13 @@ public class JXWhiteboardActivity extends Activity {
     private SavedBoard mSavedBoard = null;
     private String mAppArgument = null;
     private boolean mPausingInternal = false;
+    private boolean mIsDirty = false; // Updated since load?
 
 	public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		panel = new DrawingPanel(this);
+		mPropUpdateThread = new PropUpdateThread();
+		mPropUpdateThread.start();
 		setContentView(panel);
 		
 		mNfc = new Nfc(this);
@@ -171,10 +181,11 @@ public class JXWhiteboardActivity extends Activity {
 	public void onPause() {
 		super.onPause();
 		mNfc.onPause(this);
-		if (!mPausingInternal && mDbIntent != null) {
+		if (!mPausingInternal && mIsDirty && mDbIntent != null) {
 		    sendToDungbeetle();
 		}
 		mPausingInternal = false;
+		mIsDirty = false;
 	}
 	
 	@Override
@@ -183,7 +194,7 @@ public class JXWhiteboardActivity extends Activity {
     }
 
 	class DrawingPanel extends SurfaceView implements SurfaceHolder.Callback {
-		private List<Integer> currentPoints = new ArrayList<Integer>();
+		private List<Integer> currentPoints = new ArrayList<Integer>(UPDATE_FREQUENCY);
 		private SurfaceHolder _surfaceHolder;
 
 		
@@ -205,34 +216,45 @@ public class JXWhiteboardActivity extends Activity {
 					currentPoints.add(localToVirt(event.getX()));
 					currentPoints.add(localToVirt(event.getY()));
 					
-					if (currentPoints.size() > UPDATE_FREQUENCY) {
-						if(eraseMode) prop.add(prop.newStroke(ERASE_COLOR, 
-                                                              ERASE_WIDTH, 
-                                                              currentPoints));
-						
-						
-						else prop.add(prop.newStroke(currentColor, 
-                                                     localToVirt(currentWidth), 
-                                                     currentPoints));
-					
+					if (currentPoints.size() >= UPDATE_FREQUENCY) {
+					    Message msg = mPropUpdateThread.mHandler.obtainMessage(
+	                            PropUpdateThread.MSG_ADD_STROKE);
+	                    msg.obj = currentPoints;
+	                    if (eraseMode) {
+	                        msg.arg1 = ERASE_COLOR;
+	                        msg.arg2 = ERASE_WIDTH;
+	                    } else {
+	                        msg.arg1 = currentColor;
+	                        msg.arg2 = localToVirt(currentWidth);
+	                    }
+	                    mPropUpdateThread.mHandler.handleMessage(msg);
+
 						Integer pt0 = currentPoints.get(currentPoints.size() - 2);
 						Integer pt1 = currentPoints.get(currentPoints.size() - 1);
-						currentPoints.clear();
+						currentPoints = new ArrayList<Integer>(UPDATE_FREQUENCY);
 						currentPoints.add(pt0);
 						currentPoints.add(pt1);
 					}
 					repaint(false);
 				}
-				else if(event.getAction() == MotionEvent.ACTION_UP){
-					currentPoints.add(localToVirt(event.getX()));
-					currentPoints.add(localToVirt(event.getY()));
-					if(eraseMode) prop.add(prop.newStroke(ERASE_COLOR, 
-														  ERASE_WIDTH, 
-														  currentPoints));
-					else prop.add(prop.newStroke(currentColor, 
-												 localToVirt(currentWidth), 
-												 currentPoints));
-					currentPoints.clear();
+				else if (event.getAction() == MotionEvent.ACTION_UP) {
+                    currentPoints.add(localToVirt(event.getX()));
+                    currentPoints.add(localToVirt(event.getY()));
+
+                    Message msg = mPropUpdateThread.mHandler.obtainMessage(
+                            PropUpdateThread.MSG_ADD_STROKE);
+                    msg.obj = currentPoints;
+					if (eraseMode) {
+                        msg.arg1 = ERASE_COLOR;
+                        msg.arg2 = ERASE_WIDTH;
+					} else {
+                        msg.arg1 = currentColor;
+                        msg.arg2 = localToVirt(currentWidth);
+					}
+					mPropUpdateThread.mHandler.handleMessage(msg);
+
+					currentPoints = new ArrayList<Integer>(UPDATE_FREQUENCY);
+					mIsDirty = true;
 					repaint(false);
 				}
 				return true;
@@ -419,6 +441,14 @@ public class JXWhiteboardActivity extends Activity {
 			if(externalStorageReadableAndWritable()){
 				Bitmap bitmap = mBackgroundImage;
 				File png = new File(Environment.getExternalStorageDirectory(), filename);
+				if (png.exists()) {
+				    try {
+				        png.delete();
+				        png = new File(Environment.getExternalStorageDirectory(), filename);
+				    } catch (Exception e) {
+				        Log.e(TAG, "error removing file", e);
+				    }
+				}
 				FileOutputStream out = null;
 				try {
 					out = new FileOutputStream(png);
@@ -455,12 +485,9 @@ public class JXWhiteboardActivity extends Activity {
 		if(eraseMode){
 			menu.add(0,STOP_ERASER,0, "Stop Erasing");
 			menu.add(0,CLEAR,0, "Clear All");
-			menu.add(0,SHARE_SNAPSHOT,0, "Take Snapshot");
-			menu.add(0,ADVERTISE,0, "Advertise Board");
-			menu.add(0,FIND_BOARDS,0, "Find Public Boards");
+			menu.add(0,SHARE_SNAPSHOT,0, "Send Snapshot");
 			menu.add(0,LOAD_BOARD,0, "Load a Saved Board");
 			menu.add(0,SAVE_BOARD,0, "Save Board");
-			menu.add(0,JOIN_BY_NAME,0, "Join by Session Id");
 			menu.add(0,EXIT,0,"Exit");
 		}
 		else{
@@ -468,12 +495,9 @@ public class JXWhiteboardActivity extends Activity {
 			menu.add(0,SET_LINE_WIDTH,0,"Set Line Width");
 			menu.add(0,START_ERASER,0, "Eraser");
 			menu.add(0,CLEAR,0, "Clear All");
-			menu.add(0,SHARE_SNAPSHOT,0, "Take Snapshot");
-			menu.add(0,ADVERTISE,0, "Advertise Board");
-			menu.add(0,FIND_BOARDS,0, "Find Public Boards");
+			menu.add(0,SHARE_SNAPSHOT,0, "Send Snapshot");
 			menu.add(0,LOAD_BOARD,0, "Load a Saved Board");
 			menu.add(0,SAVE_BOARD,0, "Save Board");
-			menu.add(0,JOIN_BY_NAME,0, "Join by Name");
 			menu.add(0,EXIT,0,"Exit");
 		}
 		return true;
@@ -502,21 +526,12 @@ public class JXWhiteboardActivity extends Activity {
 		    mPausingInternal = true;
 			shareSnapshot();
 			return true;
-		case ADVERTISE:
-			advertiseBoard();
-			return true;
-		case FIND_BOARDS:
-			findBoards();
-			return true;
 		case LOAD_BOARD:
 		    mPausingInternal = true;
 			loadSavedBoard();
 			return true;
 		case SAVE_BOARD:
 			saveBoard();
-			return true;
-		case JOIN_BY_NAME:
-			joinByName();
 			return true;
 		case EXIT:
 			Process.killProcess(Process.myPid());
@@ -538,47 +553,10 @@ public class JXWhiteboardActivity extends Activity {
 		startActivityForResult(i, REQUEST_CODE_PICK_LINE_WIDTH);
 	}
 
-	private void findBoards(){
-		Intent i = new Intent();
-		i.setAction(WhiteboardIntents.ACTION_FIND_WHITEBOARDS);
-		i.putExtra(WhiteboardIntents.EXTRA_SESSION_URL, "");
-		startActivityForResult(i, REQUEST_CODE_FIND_WHITEBOARDS);
-	}
-
 	private void loadSavedBoard(){
 		Intent i = new Intent();
 		i.setAction(WhiteboardIntents.ACTION_LOAD_SAVED_BOARD);
 		startActivityForResult(i, REQUEST_CODE_LOAD_WHITEBOARD);
-	}
-
-	private void advertiseBoard(){
-		if(mBoundService != null && mActor != null){
-			final Junction jx = mActor.getJunction();
-			if(jx != null){
-				AlertDialog.Builder alert = new AlertDialog.Builder(this);
-				alert.setTitle(R.string.advertise_dialog_title);  
-				alert.setMessage(R.string.advertise_dialog_prompt);
-				final EditText input = new EditText(this);  
-				input.setText("whiteboard-" + 
-							  UUID.randomUUID().toString().substring(10));
-				alert.setView(input);
-				alert.setPositiveButton("Ok", new DialogInterface.OnClickListener() {  
-						public void onClick(DialogInterface dialog, int whichButton){  
-							String url = jx.getBaseInvitationURI().toString();
-							String name = input.getText().toString();
-							mBoundService.advertiseActivity(name, url);
-							Toast.makeText(JXWhiteboardActivity.this, R.string.advertised, 
-										   Toast.LENGTH_SHORT).show();
-						}
-					});  
-				alert.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {  
-						public void onClick(DialogInterface dialog, int whichButton) {}  
-					});  
-				alert.show();  
-				return;
-			}
-		}
-		Toast.makeText(this, R.string.advertise_failed, Toast.LENGTH_SHORT).show();
 	}
 
 	private void saveBoard(){
@@ -625,27 +603,6 @@ public class JXWhiteboardActivity extends Activity {
 		helper.close();
 	}
 
-	private void joinByName(){
-		AlertDialog.Builder alert = new AlertDialog.Builder(this);
-		alert.setTitle(R.string.join_dialog_title);  
-		alert.setMessage(R.string.join_dialog_prompt);
-		final EditText input = new EditText(this);
-		input.setText("whiteboard");
-		alert.setView(input);  
-		alert.setPositiveButton("Ok", new DialogInterface.OnClickListener() {  
-				public void onClick(DialogInterface dialog, int whichButton){  
-					String value = input.getText().toString();
-					initJunction(Uri.parse(DEFAULT_HOST + "/" + value), null);
-					panel.repaint(true);
-				}  
-			});  
-		alert.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {  
-				public void onClick(DialogInterface dialog, int whichButton) {}  
-			});  
-		alert.show();  
-	}
-
-
 	@Override
 	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
 		super.onActivityResult(requestCode, resultCode, data);
@@ -662,13 +619,6 @@ public class JXWhiteboardActivity extends Activity {
 			if(resultCode == RESULT_OK){
 				currentWidth = data.getIntExtra(
 					WhiteboardIntents.EXTRA_LINE_WIDTH, currentWidth);
-			}
-			break;
-		case REQUEST_CODE_FIND_WHITEBOARDS:
-			if(resultCode == RESULT_OK){
-				String url = data.getStringExtra(
-					WhiteboardIntents.EXTRA_SESSION_URL);
-				initJunction(Uri.parse(url), null);
 			}
 			break;
 		case REQUEST_CODE_LOAD_WHITEBOARD:
@@ -701,82 +651,120 @@ public class JXWhiteboardActivity extends Activity {
 		return Uri.parse(DEFAULT_HOST + "/" + sessId );
 	}
 
+    private void initJunction(final Uri uri, SavedBoard savedBoard) {
+        if (savedBoard != null) {
+            JSONObject obj = savedBoard.obj();
+            JSONArray items = obj.optJSONArray("items");
+            ArrayList<JSONObject> strokes = new ArrayList<JSONObject>();
+            if (items != null) {
+                for (int i = 0; i < items.length(); i++) {
+                    JSONObject stroke = items.optJSONObject(i);
+                    strokes.add(stroke);
+                }
+            }
+            ListState state = new ListState(strokes);
+            long seqNum = savedBoard.seqNum;
+            prop = new WhiteboardProp("whiteboard_model", state, seqNum);
+        } else {
+            prop = new WhiteboardProp("whiteboard_model");
+        }
+        prop.addChangeListener(new IPropChangeListener() {
+            public String getType() {
+                return Prop.EVT_ANY;
+            }
 
-	private void initJunction(Uri uri, SavedBoard savedBoard){
-		if(savedBoard != null){
-			JSONObject obj = savedBoard.obj();
-			JSONArray items = obj.optJSONArray("items");
-			ArrayList<JSONObject> strokes = new ArrayList<JSONObject>();
-			if(items != null){
-				for(int i = 0; i < items.length(); i++){
-					JSONObject stroke = items.optJSONObject(i);
-					strokes.add(stroke);
-				}
-			}
-			ListState state = new ListState(strokes);
-			long seqNum = savedBoard.seqNum;
-			prop = new WhiteboardProp("whiteboard_model", state, seqNum);
-		}
-		else{
-			prop = new WhiteboardProp("whiteboard_model");
-		}
-		prop.addChangeListener(new IPropChangeListener(){
-				public String getType(){ return Prop.EVT_ANY; }
-				public void onChange(Object data){
-                    JXWhiteboardActivity.this.runOnUiThread(new Runnable(){
-                            public void run(){ panel.repaint(true); }
-                        });
-				}
-			});
+            public void onChange(Object data) {
+                JXWhiteboardActivity.this.runOnUiThread(new Runnable() {
+                    public void run() {
+                        panel.repaint(true);
+                    }
+                });
+            }
+        });
 
-		if(mActor != null){
-			mActor.leave();
-		}
+        if (mActor != null) {
+            mActor.leave();
+        }
 
-		URI url = null;
-		try{
-			url = new URI(uri.toString());
-		}
-		catch(URISyntaxException e){
-			Log.e("JXWhiteboardActivity", "Failed to parse uri: " + uri.toString());
-			return;
-		}
+        final URI url;
+        try {
+            url = new URI(uri.toString());
+        } catch (URISyntaxException e) {
+            Log.e("JXWhiteboardActivity", "Failed to parse uri: " + uri.toString());
+            return;
+        }
 
-		mActor = new JunctionActor("participant"){
-				@Override
-				public void onActivityJoin() {
-					doNFCBroadcast();
-					System.out.println("joined!");
-				}
-				@Override
-				public void onMessageReceived(MessageHeader header, JSONObject msg) {
-					//System.out.println("Got msg!");	
-				}
-				@Override
-				public List<JunctionExtra> getInitialExtras() {
-					ArrayList<JunctionExtra> extras = new ArrayList<JunctionExtra>();
-					extras.add(prop);
-					return extras;
-				}
-				@Override
-				public void onActivityCreate() {
+        mActor = new JunctionActor("participant") {
+            @Override
+            public void onActivityJoin() {
+                doNFCBroadcast();
+                System.out.println("joined!");
+            }
 
-				}
-			};
-			
-		
-		SwitchboardConfig sb = AndroidJunctionMaker.getDefaultSwitchboardConfig(url);
-		if (sb instanceof XMPPSwitchboardConfig) {
-			((XMPPSwitchboardConfig)sb).setConnectionTimeout(10000);
-		}
+            @Override
+            public void onMessageReceived(MessageHeader header, JSONObject msg) {
+                // System.out.println("Got msg!");
+            }
 
-		try{
-			AndroidJunctionMaker.getInstance(sb).newJunction(url, mScript, mActor);
-		}
-		catch(JunctionException e){
-			maybeRetryJunction(uri, e);
-		}
-	}
+            @Override
+            public List<JunctionExtra> getInitialExtras() {
+                ArrayList<JunctionExtra> extras = new ArrayList<JunctionExtra>();
+                extras.add(prop);
+                return extras;
+            }
+
+            @Override
+            public void onActivityCreate() {
+
+            }
+        };
+
+        final SwitchboardConfig sb = AndroidJunctionMaker.getDefaultSwitchboardConfig(url);
+        if (sb instanceof XMPPSwitchboardConfig) {
+            ((XMPPSwitchboardConfig) sb).setConnectionTimeout(10000);
+        }
+
+        new AsyncTask<Void, Void, Boolean>() {
+            private ProgressDialog mmProgress = new ProgressDialog(JXWhiteboardActivity.this);
+            private JunctionException mmException;
+            private boolean mmCancelled;
+
+            @Override
+            protected Boolean doInBackground(Void... arg0) {
+                try {
+                    AndroidJunctionMaker.getInstance(sb).newJunction(url, mScript, mActor);
+                } catch (JunctionException e) {
+                    mmException = e;
+                    return false;
+                }
+                return true;
+            }
+
+            @Override
+            protected void onPreExecute() {
+                mmCancelled = false;
+                mmProgress.setTitle("Connecting to session");
+                mmProgress.setMessage("Connecting...");
+                mmProgress.setIndeterminate(true);
+                mmProgress.setCancelable(true);
+                mmProgress.setOnCancelListener(new DialogInterface.OnCancelListener() {
+                    @Override
+                    public void onCancel(DialogInterface arg0) {
+                        mmCancelled = true;
+                    }
+                });
+                mmProgress.show();
+            }
+
+            @Override
+            protected void onPostExecute(Boolean result) {
+                mmProgress.hide();
+                if (!result && !mmCancelled) {
+                    maybeRetryJunction(uri, mmException);
+                }
+            };
+        }.execute();
+    }
 
 	private void maybeRetryJunction(final Uri uri, final JunctionException e){
 		AlertDialog.Builder alert = new AlertDialog.Builder(this);
@@ -841,6 +829,31 @@ public class JXWhiteboardActivity extends Activity {
 		return localToVirt((float)val);
 	}
 
+	class PropUpdateThread extends Thread {
+	    static final int MSG_ADD_STROKE = 1;
+	    private Handler mHandler;
+
+	    @Override
+	    public void run() {
+            Looper.prepare();
+
+            mHandler = new Handler() {
+                public void handleMessage(Message msg) {
+                    switch (msg.what) {
+                        case MSG_ADD_STROKE:
+                            int color = msg.arg1;
+                            int width = msg.arg2;
+                            @SuppressWarnings("unchecked")
+                            List<Integer> points = (List<Integer>)msg.obj;
+
+                            prop.add(prop.newStroke(color, width, points));
+                            break;
+                    }
+                }
+            };
+            Looper.loop();
+        }
+	}
 
 	private boolean doNFCBroadcast() {
 		if (mActor == null || mActor.getJunction() == null) {
@@ -876,17 +889,12 @@ public class JXWhiteboardActivity extends Activity {
             state.put("data", prop.stateToJSON().toString());
             state.put("seq", prop.getSequenceNum());
             store.putExtra("mobisocial.db.STATE", state.toString());
-
             store.putExtra("mobisocial.db.THUMBNAIL_IMAGE", captureThumbnailBase64());
-            Log.d(TAG, "storing state " + state);
+            sendBroadcast(store);
         } catch (JSONException e) {}
-        sendBroadcast(store);
 	}
 
 	private void toast(final String text) {
 	    Toast.makeText(this, text, Toast.LENGTH_SHORT).show();
 	}
 }
-
-
-
