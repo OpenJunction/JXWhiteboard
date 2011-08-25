@@ -337,28 +337,30 @@ public class JXWhiteboardActivity extends Activity {
 			}
 		}
 		
-		public void repaint(boolean all) {
-			if(_surfaceHolder != null && mBackgroundImage != null){
-				Canvas canvas = new Canvas(mBackgroundImage);
-				if(all) paintState(canvas);
-				else paintCurrentStroke(canvas);
-				try {
-					synchronized (_surfaceHolder) {
-						canvas = _surfaceHolder.lockCanvas(null);
-						canvas.drawBitmap(mBackgroundImage, 0, 0, null);
-					}
-				}
-				finally {
-					// do this in a finally so that if an exception is thrown
-					// during the above, we don't leave the Surface in an
-					// inconsistent state
-					if (canvas != null) {
-						_surfaceHolder.unlockCanvasAndPost(canvas);
-					}
-				}
-			}
-		}
-		
+        public void repaint(boolean all) {
+            if (_surfaceHolder != null && mBackgroundImage != null) {
+                Canvas canvas = new Canvas(mBackgroundImage);
+                if (all) {
+                    paintState(canvas);
+                } else {
+                    paintCurrentStroke(canvas);
+                }
+                try {
+                    synchronized (_surfaceHolder) {
+                        canvas = _surfaceHolder.lockCanvas(null);
+                        canvas.drawBitmap(mBackgroundImage, 0, 0, null);
+                    }
+                } finally {
+                    // do this in a finally so that if an exception is thrown
+                    // during the above, we don't leave the Surface in an
+                    // inconsistent state
+                    if (canvas != null) {
+                        _surfaceHolder.unlockCanvasAndPost(canvas);
+                    }
+                }
+            }
+        }
+
 		public void surfaceChanged(SurfaceHolder holder, int format, int width,int height) {
 			localWidth = width;
 			mBackgroundImage = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
