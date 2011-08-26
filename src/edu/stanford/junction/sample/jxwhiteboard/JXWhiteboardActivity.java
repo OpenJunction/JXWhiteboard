@@ -8,7 +8,9 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import mobisocial.nfc.Nfc;
 
@@ -168,7 +170,6 @@ public class JXWhiteboardActivity extends Activity {
 			sessionUri = newRandomSessionUri();
 		}
 		initJunction(sessionUri, mSavedBoard);
-		//bindLiaisonService();
 	}
 	
 	@Override
@@ -193,73 +194,119 @@ public class JXWhiteboardActivity extends Activity {
     	if (mNfc.onNewIntent(this, intent)) return;
     }
 
-	class DrawingPanel extends SurfaceView implements SurfaceHolder.Callback {
-		private List<Integer> currentPoints = new ArrayList<Integer>(UPDATE_FREQUENCY);
-		private SurfaceHolder _surfaceHolder;
+    class DrawingPanel extends SurfaceView implements SurfaceHolder.Callback {
+        private Map<Integer, List<Integer>> currentStrokes = new HashMap<Integer, List<Integer>>();
+        private SurfaceHolder _surfaceHolder;
 
-		
-		public DrawingPanel(Context context) {
-			super(context);
-			getHolder().addCallback(this);
-		}
-		
-		@Override
-		public boolean onTouchEvent(MotionEvent event) {
-			synchronized (getHolder()) {
-				if(event.getAction() == MotionEvent.ACTION_DOWN){
-					currentPoints.clear();
-					currentPoints.add(localToVirt(event.getX()));
-					currentPoints.add(localToVirt(event.getY()));
-					repaint(false);
-				}
-				else if(event.getAction() == MotionEvent.ACTION_MOVE){
-					currentPoints.add(localToVirt(event.getX()));
-					currentPoints.add(localToVirt(event.getY()));
-					
-					if (currentPoints.size() >= UPDATE_FREQUENCY) {
-					    Message msg = mPropUpdateThread.mHandler.obtainMessage(
-	                            PropUpdateThread.MSG_ADD_STROKE);
-	                    msg.obj = currentPoints;
-	                    if (eraseMode) {
-	                        msg.arg1 = ERASE_COLOR;
-	                        msg.arg2 = ERASE_WIDTH;
-	                    } else {
-	                        msg.arg1 = currentColor;
-	                        msg.arg2 = localToVirt(currentWidth);
-	                    }
-	                    mPropUpdateThread.mHandler.handleMessage(msg);
+        public DrawingPanel(Context context) {
+            super(context);
+            getHolder().addCallback(this);
+        }
 
-						Integer pt0 = currentPoints.get(currentPoints.size() - 2);
-						Integer pt1 = currentPoints.get(currentPoints.size() - 1);
-						currentPoints = new ArrayList<Integer>(UPDATE_FREQUENCY);
-						currentPoints.add(pt0);
-						currentPoints.add(pt1);
-					}
-					repaint(false);
-				}
-				else if (event.getAction() == MotionEvent.ACTION_UP) {
-                    currentPoints.add(localToVirt(event.getX()));
-                    currentPoints.add(localToVirt(event.getY()));
+        @Override
+        protected void onDraw(Canvas canvas) {
+            repaint(true);
+        }
 
-                    Message msg = mPropUpdateThread.mHandler.obtainMessage(
-                            PropUpdateThread.MSG_ADD_STROKE);
-                    msg.obj = currentPoints;
-					if (eraseMode) {
-                        msg.arg1 = ERASE_COLOR;
-                        msg.arg2 = ERASE_WIDTH;
-					} else {
-                        msg.arg1 = currentColor;
-                        msg.arg2 = localToVirt(currentWidth);
-					}
-					mPropUpdateThread.mHandler.handleMessage(msg);
+        @Override
+        public boolean onTouchEvent(MotionEvent ev) {
+            int action = ev.getAction();
 
-					currentPoints = new ArrayList<Integer>(UPDATE_FREQUENCY);
-					mIsDirty = true;
-					repaint(false);
-				}
-				return true;
-			}
-		}
+            switch (action & MotionEvent.ACTION_MASK) {
+                case MotionEvent.ACTION_DOWN: {
+                    startStroke(0, ev);
+                    break;
+                }
+                case MotionEvent.ACTION_UP: {
+                    finishStroke(0, ev);
+                    mIsDirty = true;
+                    break;
+                }
+                case MotionEvent.ACTION_MOVE: {
+                    updateStrokes(ev);
+                    break;
+                }
+                case MotionEvent.ACTION_POINTER_UP: {
+                    final int pointerIndex = (action & MotionEvent.ACTION_POINTER_INDEX_MASK)
+                            >> MotionEvent.ACTION_POINTER_INDEX_SHIFT;
+                    final int pointerId = ev.getPointerId(pointerIndex);
+                    finishStroke(pointerId, ev);
+                    break;
+                }
+                case MotionEvent.ACTION_POINTER_DOWN: {
+                    final int pointerIndex = (action & MotionEvent.ACTION_POINTER_INDEX_MASK)
+                            >> MotionEvent.ACTION_POINTER_INDEX_SHIFT;
+                    final int pointerId = ev.getPointerId(pointerIndex);
+                    startStroke(pointerId, ev);
+                    break;
+                }
+            }
+            return true;
+        }
+
+        void updateStrokes(MotionEvent ev) {
+            final int historySize = ev.getHistorySize();
+            final int pointerCount = ev.getPointerCount();
+            for (int p = 0; p < pointerCount; p++) {
+                List<Integer> currentPoints = currentStrokes.get(p);
+                for (int h = 0; h < historySize; h++) {
+                    currentPoints.add(localToVirt(ev.getHistoricalX(p, h)));
+                    currentPoints.add(localToVirt(ev.getHistoricalY(p, h)));
+                }
+            }
+
+            for (int p = 0; p < pointerCount; p++) {
+                List<Integer> currentPoints = currentStrokes.get(p);
+                currentPoints.add(localToVirt(ev.getX(p)));
+                currentPoints.add(localToVirt(ev.getY(p)));
+                if (currentPoints.size() >= UPDATE_FREQUENCY) {
+                    sendStroke(currentPoints);
+                    currentPoints.clear();
+                    currentPoints.add(localToVirt(ev.getX(p)));
+                    currentPoints.add(localToVirt(ev.getY(p)));
+                }
+            }
+            repaint(false);
+        }
+
+        private void startStroke(int id, MotionEvent ev) {
+            if (!currentStrokes.containsKey(id)) {
+                currentStrokes.put(id, new ArrayList<Integer>());
+            } else {
+                currentStrokes.get(id).clear();
+            }
+            currentStrokes.get(id).add(localToVirt(ev.getX(id)));
+            currentStrokes.get(id).add(localToVirt(ev.getY(id)));
+        }
+
+        private void finishStroke(int id, MotionEvent ev) {
+            List<Integer> stroke = currentStrokes.get(id);
+            if (stroke == null) {
+                return;
+            }
+            stroke.add(localToVirt(ev.getX(id)));
+            stroke.add(localToVirt(ev.getY(id)));
+            Log.d(TAG, "have " + stroke.size());
+            sendStroke(stroke);
+            stroke.clear();
+            repaint(false);
+        }
+
+        private void sendStroke(List<Integer> stroke) {
+            Message msg = mPropUpdateThread.mHandler
+                    .obtainMessage(PropUpdateThread.MSG_ADD_STROKE);
+            List<Integer> out = new ArrayList<Integer>(stroke);
+            msg.obj = out;
+
+            if (eraseMode) {
+                msg.arg1 = ERASE_COLOR;
+                msg.arg2 = ERASE_WIDTH;
+            } else {
+                msg.arg1 = currentColor;
+                msg.arg2 = localToVirt(currentWidth);
+            }
+            mPropUpdateThread.mHandler.handleMessage(msg);
+        }
 
 		protected void paintState(final Canvas canvas){
 			final Paint mPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -274,7 +321,7 @@ public class JXWhiteboardActivity extends Activity {
 			// paint prop state
             prop.withState(new IWithStateAction<Void>(){
                     public Void run(IPropState state){
-                        Collection<JSONObject> items =  ((ListState)state).items();
+                        Collection<JSONObject> items = ((ListState)state).items();
                         for (JSONObject o : prop.items()) {
                             int color = Integer.parseInt(o.optString("color").substring(1), 16);
                             mPaint.setColor(0xFF000000 | color);
@@ -285,27 +332,28 @@ public class JXWhiteboardActivity extends Activity {
                         return null;
                     }
                 });
-			paintCurrentStroke(canvas);
+			paintCurrentStrokes(canvas);
 		}
 
-		protected void paintCurrentStroke(Canvas canvas){
-			Paint paint = new Paint();
-			paint.setDither(true);
-			paint.setStyle(Paint.Style.STROKE);
-			paint.setStrokeJoin(Paint.Join.ROUND);
-			paint.setStrokeCap(Paint.Cap.ROUND);
+        protected void paintCurrentStrokes(Canvas canvas) {
+            Paint paint = new Paint();
+            paint.setDither(true);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeJoin(Paint.Join.ROUND);
+            paint.setStrokeCap(Paint.Cap.ROUND);
 
-			// Draw stroke-in-progress
-			if(eraseMode){
-				paint.setColor(0xFF000000 | ERASE_COLOR);
-				paint.setStrokeWidth(ERASE_WIDTH);
-			}
-			else{
-				paint.setColor(0xFF000000 | currentColor);
-				paint.setStrokeWidth(virtToLocal(localToVirt(currentWidth)));
-			}
-			paintStroke(canvas, paint, currentPoints);
-		}
+            // Draw stroke-in-progress
+            if (eraseMode) {
+                paint.setColor(0xFF000000 | ERASE_COLOR);
+                paint.setStrokeWidth(ERASE_WIDTH);
+            } else {
+                paint.setColor(0xFF000000 | currentColor);
+                paint.setStrokeWidth(virtToLocal(localToVirt(currentWidth)));
+            }
+            for (List<Integer> points : currentStrokes.values()) {
+                paintStroke(canvas, paint, points);
+            }
+        }
 
 		protected void paintStroke(Canvas canvas, Paint paint, List<Integer> points){
 			if(points.size() >= 4){
@@ -343,7 +391,7 @@ public class JXWhiteboardActivity extends Activity {
                 if (all) {
                     paintState(canvas);
                 } else {
-                    paintCurrentStroke(canvas);
+                    paintCurrentStrokes(canvas);
                 }
                 try {
                     synchronized (_surfaceHolder) {
@@ -375,7 +423,6 @@ public class JXWhiteboardActivity extends Activity {
 		public void surfaceDestroyed(SurfaceHolder holder) {
 			_surfaceHolder = null;
 		}
-
 	}
 
 
