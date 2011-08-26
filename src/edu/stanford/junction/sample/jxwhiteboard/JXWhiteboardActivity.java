@@ -724,7 +724,7 @@ public class JXWhiteboardActivity extends Activity {
             public void onChange(Object data) {
                 JXWhiteboardActivity.this.runOnUiThread(new Runnable() {
                     public void run() {
-                        panel.repaint(true);
+                        panel.invalidate();
                     }
                 });
             }
