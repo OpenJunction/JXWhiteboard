@@ -35,6 +35,7 @@ import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.net.Uri;
 import android.os.AsyncTask;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
@@ -214,11 +215,11 @@ public class JXWhiteboardActivity extends Activity {
 
             switch (action & MotionEvent.ACTION_MASK) {
                 case MotionEvent.ACTION_DOWN: {
-                    startStroke(0, ev);
+                    startStroke(0, 0, ev);
                     break;
                 }
                 case MotionEvent.ACTION_UP: {
-                    finishStroke(0, ev);
+                    finishStroke(0, 0, ev);
                     mIsDirty = true;
                     break;
                 }
@@ -230,14 +231,19 @@ public class JXWhiteboardActivity extends Activity {
                     final int pointerIndex = (action & MotionEvent.ACTION_POINTER_INDEX_MASK)
                             >> MotionEvent.ACTION_POINTER_INDEX_SHIFT;
                     final int pointerId = ev.getPointerId(pointerIndex);
-                    finishStroke(pointerId, ev);
+                    finishStroke(pointerId, pointerIndex, ev);
                     break;
                 }
                 case MotionEvent.ACTION_POINTER_DOWN: {
                     final int pointerIndex = (action & MotionEvent.ACTION_POINTER_INDEX_MASK)
                             >> MotionEvent.ACTION_POINTER_INDEX_SHIFT;
                     final int pointerId = ev.getPointerId(pointerIndex);
-                    startStroke(pointerId, ev);
+                    startStroke(pointerId, pointerIndex, ev);
+                    break;
+                }
+                case MotionEvent.ACTION_CANCEL: {
+                    Log.d(TAG, "Cancelled a gesture");
+                    currentStrokes.clear();
                     break;
                 }
             }
@@ -248,7 +254,8 @@ public class JXWhiteboardActivity extends Activity {
             final int historySize = ev.getHistorySize();
             final int pointerCount = ev.getPointerCount();
             for (int p = 0; p < pointerCount; p++) {
-                List<Integer> currentPoints = currentStrokes.get(p);
+                int id = ev.getPointerId(p);
+                List<Integer> currentPoints = currentStrokes.get(id);
                 for (int h = 0; h < historySize; h++) {
                     currentPoints.add(localToVirt(ev.getHistoricalX(p, h)));
                     currentPoints.add(localToVirt(ev.getHistoricalY(p, h)));
@@ -256,7 +263,8 @@ public class JXWhiteboardActivity extends Activity {
             }
 
             for (int p = 0; p < pointerCount; p++) {
-                List<Integer> currentPoints = currentStrokes.get(p);
+                int id = ev.getPointerId(p);
+                List<Integer> currentPoints = currentStrokes.get(id);
                 currentPoints.add(localToVirt(ev.getX(p)));
                 currentPoints.add(localToVirt(ev.getY(p)));
                 if (currentPoints.size() >= UPDATE_FREQUENCY) {
@@ -269,23 +277,23 @@ public class JXWhiteboardActivity extends Activity {
             repaint(false);
         }
 
-        private void startStroke(int id, MotionEvent ev) {
-            if (!currentStrokes.containsKey(id)) {
-                currentStrokes.put(id, new ArrayList<Integer>());
+        private void startStroke(int pointerId, int pointerIndex, MotionEvent ev) {
+            if (!currentStrokes.containsKey(pointerId)) {
+                currentStrokes.put(pointerId, new ArrayList<Integer>());
             } else {
-                currentStrokes.get(id).clear();
+                currentStrokes.get(pointerId).clear();
             }
-            currentStrokes.get(id).add(localToVirt(ev.getX(id)));
-            currentStrokes.get(id).add(localToVirt(ev.getY(id)));
+            currentStrokes.get(pointerId).add(localToVirt(ev.getX(pointerIndex)));
+            currentStrokes.get(pointerId).add(localToVirt(ev.getY(pointerIndex)));
         }
 
-        private void finishStroke(int id, MotionEvent ev) {
-            List<Integer> stroke = currentStrokes.get(id);
+        private void finishStroke(int pointerId, int pointerIndex, MotionEvent ev) {
+            List<Integer> stroke = currentStrokes.get(pointerId);
             if (stroke == null) {
                 return;
             }
-            stroke.add(localToVirt(ev.getX(id)));
-            stroke.add(localToVirt(ev.getY(id)));
+            stroke.add(localToVirt(ev.getX(pointerIndex)));
+            stroke.add(localToVirt(ev.getY(pointerIndex)));
             sendStroke(stroke);
             stroke.clear();
             repaint(false);
@@ -529,27 +537,36 @@ public class JXWhiteboardActivity extends Activity {
 	}
 
 	public boolean onPreparePanel(int featureId, View view, Menu menu){
-		menu.clear();
-		if(eraseMode){
-			menu.add(0,STOP_ERASER,0, "Stop Erasing");
-			menu.add(0,CLEAR,0, "Clear All");
-			menu.add(0,SHARE_SNAPSHOT,0, "Send Snapshot");
-			menu.add(0,LOAD_BOARD,0, "Load a Saved Board");
-			menu.add(0,SAVE_BOARD,0, "Save Board");
-			menu.add(0,EXIT,0,"Exit");
-		}
-		else{
-			menu.add(0,SET_COLOR,0,"Set Color");
-			menu.add(0,SET_LINE_WIDTH,0,"Set Line Width");
-			menu.add(0,START_ERASER,0, "Eraser");
-			menu.add(0,CLEAR,0, "Clear All");
-			menu.add(0,SHARE_SNAPSHOT,0, "Send Snapshot");
-			menu.add(0,LOAD_BOARD,0, "Load a Saved Board");
-			menu.add(0,SAVE_BOARD,0, "Save Board");
-			menu.add(0,EXIT,0,"Exit");
-		}
-		return true;
-	}
+	    MenuItem item;
+        menu.clear();
+        if (eraseMode) {
+            menu.add(0, STOP_ERASER, 0, "Stop Erasing");
+            menu.add(0, CLEAR, 0, "Clear All");
+            menu.add(0, SHARE_SNAPSHOT, 0, "Send Snapshot");
+            menu.add(0, LOAD_BOARD, 0, "Load a Saved Board");
+            menu.add(0, SAVE_BOARD, 0, "Save Board");
+            menu.add(0, EXIT, 0, "Exit");
+        } else {
+            item = menu.add(0, SET_COLOR, 0, "Set Color");
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
+                item.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM);
+            }
+            item = menu.add(0, SET_LINE_WIDTH, 0, "Set Line Width");
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
+                item.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM);
+            }
+            item = menu.add(0, START_ERASER, 0, "Eraser");
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
+                item.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM);
+            }
+            menu.add(0, CLEAR, 0, "Clear All");
+            menu.add(0, SHARE_SNAPSHOT, 0, "Send Snapshot");
+            menu.add(0, LOAD_BOARD, 0, "Load a Saved Board");
+            menu.add(0, SAVE_BOARD, 0, "Save Board");
+            menu.add(0, EXIT, 0, "Exit");
+        }
+        return true;
+    }
 
 	public boolean onOptionsItemSelected (MenuItem item){
 		switch (item.getItemId()){
@@ -724,7 +741,8 @@ public class JXWhiteboardActivity extends Activity {
             public void onChange(Object data) {
                 JXWhiteboardActivity.this.runOnUiThread(new Runnable() {
                     public void run() {
-                        panel.invalidate();
+                        // panel.invalidate();
+                        panel.repaint(true);
                     }
                 });
             }
