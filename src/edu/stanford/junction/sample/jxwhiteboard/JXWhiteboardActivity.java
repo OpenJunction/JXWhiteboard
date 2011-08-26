@@ -286,7 +286,6 @@ public class JXWhiteboardActivity extends Activity {
             }
             stroke.add(localToVirt(ev.getX(id)));
             stroke.add(localToVirt(ev.getY(id)));
-            Log.d(TAG, "have " + stroke.size());
             sendStroke(stroke);
             stroke.clear();
             repaint(false);
