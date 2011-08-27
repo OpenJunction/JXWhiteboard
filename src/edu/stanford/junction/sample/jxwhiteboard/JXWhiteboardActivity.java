@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 import mobisocial.nfc.Nfc;
+import mobisocial.socialkit.musubi.Musubi;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -79,6 +80,7 @@ public class JXWhiteboardActivity extends Activity {
 	private WhiteboardProp prop;
 
 	public static final String TAG = "whiteboard";
+	public static final boolean DBG = false;
 	public static final String EXTRA_APP_ARGUMENT = "android.intent.extra.APPLICATION_ARGUMENT";
     private static final int REQUEST_CODE_PICK_COLOR = 1;
     private static final int REQUEST_CODE_PICK_LINE_WIDTH = 2;
@@ -114,12 +116,12 @@ public class JXWhiteboardActivity extends Activity {
     private int localWidth = 0;
 
     private Nfc mNfc = null;
-    private Uri mDbFeed = null;
-    private Intent mDbIntent = null;
     private SavedBoard mSavedBoard = null;
     private String mAppArgument = null;
     private boolean mPausingInternal = false;
     private boolean mIsDirty = false; // Updated since load?
+
+    private Musubi mMusubi;
 
 	public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
@@ -127,19 +129,16 @@ public class JXWhiteboardActivity extends Activity {
 		mPropUpdateThread = new PropUpdateThread();
 		mPropUpdateThread.start();
 		setContentView(panel);
-		
-		mNfc = new Nfc(this);
 
-		// Were we launched from DungBeetle?
-		if (getIntent().hasExtra("mobisocial.db.FEED")) {
-		    mDbIntent = getIntent();
-		    mDbFeed = mDbIntent.getParcelableExtra("mobisocial.db.FEED");
-		    if (mDbIntent.hasExtra("mobisocial.db.STATE")) {
-    		    try {
-    		        JSONObject state = new JSONObject(mDbIntent.getStringExtra("mobisocial.db.STATE"));
-    		        mSavedBoard = new SavedBoard("loaded", state.optString("data"), state.optLong("seq"));
-    		        Log.d(TAG, "loading whiteboard state " + mSavedBoard.data + ", " + mSavedBoard.seqNum);
-    		    } catch (JSONException e) {}
+		mNfc = new Nfc(this);
+		Intent intent = getIntent();
+		if (Musubi.isDungbeetleIntent(intent)) { // SocialKit.hasFeed(intent)
+		    mMusubi = Musubi.getInstance(this, intent);
+		    JSONObject state = mMusubi.getFeed().getLatestState();
+		    Log.d(TAG, "WE HAVE STATE " + state);
+		    if (state != null) {
+                mSavedBoard = new SavedBoard("loaded", state.optString("data"), state.optLong("seq"));
+                if (DBG) Log.d(TAG, "loading whiteboard state " + mSavedBoard.data + ", " + mSavedBoard.seqNum);
 		    }
 		}
 
@@ -161,6 +160,8 @@ public class JXWhiteboardActivity extends Activity {
 		Uri sessionUri;
 		if (AndroidJunctionMaker.isJoinable(this)) {
 			sessionUri = Uri.parse(getIntent().getStringExtra("invitationURI"));
+		} else if (mMusubi != null) {
+		   sessionUri = Uri.parse(mMusubi.getFeed().getJunction().getInvitationURI().toString());
 		} else if (mAppArgument != null) {
 			// This method will become the preferred way of passing an argument.
 			sessionUri = Uri.parse(mAppArgument);
@@ -183,7 +184,7 @@ public class JXWhiteboardActivity extends Activity {
 	public void onPause() {
 		super.onPause();
 		mNfc.onPause(this);
-		if (!mPausingInternal && mIsDirty && mDbIntent != null) {
+		if (!mPausingInternal && mIsDirty && mMusubi != null) {
 		    sendToDungbeetle();
 		}
 		mPausingInternal = false;
@@ -292,8 +293,24 @@ public class JXWhiteboardActivity extends Activity {
             if (stroke == null) {
                 return;
             }
-            stroke.add(localToVirt(ev.getX(pointerIndex)));
-            stroke.add(localToVirt(ev.getY(pointerIndex)));
+            if (stroke.size() <= 4) {
+                // fun effect :)
+                //stroke.add(0);
+                //stroke.add(0);
+
+                int w = localToVirt(currentWidth);
+                int x = localToVirt(ev.getX(pointerIndex));
+                int y = localToVirt(ev.getY(pointerIndex));
+
+                stroke.add(x - 1);
+                stroke.add(y - 1);
+
+                stroke.add(x + 1);
+                stroke.add(y + 1);
+            } else {
+                stroke.add(localToVirt(ev.getX(pointerIndex)));
+                stroke.add(localToVirt(ev.getY(pointerIndex)));
+            }
             sendStroke(stroke);
             stroke.clear();
             repaint(false);
@@ -559,7 +576,10 @@ public class JXWhiteboardActivity extends Activity {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
                 item.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM);
             }
-            menu.add(0, CLEAR, 0, "Clear All");
+            item = menu.add(0, CLEAR, 0, "Clear All");
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
+                item.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM);
+            }
             menu.add(0, SHARE_SNAPSHOT, 0, "Send Snapshot");
             menu.add(0, LOAD_BOARD, 0, "Load a Saved Board");
             menu.add(0, SAVE_BOARD, 0, "Save Board");
@@ -639,9 +659,8 @@ public class JXWhiteboardActivity extends Activity {
 						long seq = prop.getSequenceNum();
 						Log.d(TAG, "saving whiteboard state " + state);
 						saveBoardToDB(name, state, seq);
-						Toast.makeText(JXWhiteboardActivity.this, 
-									   "Saved", 
-									   Toast.LENGTH_SHORT).show();
+						Toast.makeText(JXWhiteboardActivity.this, "Saved",
+						        Toast.LENGTH_SHORT).show();
 					}
 				});  
 			alert.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {  
@@ -947,16 +966,12 @@ public class JXWhiteboardActivity extends Activity {
 	}
 
 	private void sendToDungbeetle() {
-        Intent store = new Intent("mobisocial.db.action.PUBLISH");
-        store.putExtras(mDbIntent.getExtras());
-        // TODO: Whiteboard content provider.
+        // TODO: Whiteboard content provider via content corral?
         try {
             JSONObject state = new JSONObject();
             state.put("data", prop.stateToJSON().toString());
             state.put("seq", prop.getSequenceNum());
-            store.putExtra("mobisocial.db.STATE", state.toString());
-            store.putExtra("mobisocial.db.THUMBNAIL_IMAGE", captureThumbnailBase64());
-            sendBroadcast(store);
+            mMusubi.getFeed().postObjectWithImage(state, captureThumbnailBase64());
         } catch (JSONException e) {}
 	}
 
