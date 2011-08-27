@@ -160,15 +160,13 @@ public class JXWhiteboardActivity extends Activity {
 		Uri sessionUri;
 		if (AndroidJunctionMaker.isJoinable(this)) {
 			sessionUri = Uri.parse(getIntent().getStringExtra("invitationURI"));
-		} else if (mMusubi != null) {
-		   sessionUri = Uri.parse(mMusubi.getFeed().getJunction().getInvitationURI().toString());
 		} else if (mAppArgument != null) {
-			// This method will become the preferred way of passing an argument.
+		    Log.i("JXWhiteboard", "Got app argument: " + mAppArgument);
 			sessionUri = Uri.parse(mAppArgument);
-		} else {
-            Log.i("JXWhiteboard", "Got app argument: " + mAppArgument);
-        
-			//sessionUri = fixedSessionUri("whiteboard");
+		} else if (mMusubi != null) {
+           sessionUri = Uri.parse(mMusubi.getFeed().getJunction().getInvitationURI().toString());
+        } else {
+            //sessionUri = fixedSessionUri("whiteboard");
 			sessionUri = newRandomSessionUri();
 		}
 		initJunction(sessionUri, mSavedBoard);
