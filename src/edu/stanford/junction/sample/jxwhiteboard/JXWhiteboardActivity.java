@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 import mobisocial.nfc.Nfc;
+import mobisocial.socialkit.musubi.AppState;
 import mobisocial.socialkit.musubi.Musubi;
 
 import org.json.JSONArray;
@@ -160,7 +161,7 @@ public class JXWhiteboardActivity extends Activity {
 		Uri sessionUri;
 		if (AndroidJunctionMaker.isJoinable(this)) {
 			sessionUri = Uri.parse(getIntent().getStringExtra("invitationURI"));
-		} else if (mAppArgument != null) {
+		} else if (mAppArgument != null && mAppArgument.length() > 0) {
 		    Log.i("JXWhiteboard", "Got app argument: " + mAppArgument);
 			sessionUri = Uri.parse(mAppArgument);
 		} else if (mMusubi != null) {
@@ -969,7 +970,11 @@ public class JXWhiteboardActivity extends Activity {
             JSONObject state = new JSONObject();
             state.put("data", prop.stateToJSON().toString());
             state.put("seq", prop.getSequenceNum());
-            mMusubi.getFeed().postObjectWithImage(state, captureThumbnailBase64());
+            AppState appState = new AppState.Builder()
+                .setState(state)
+                .setThumbnailB64Image(captureThumbnailBase64())
+                .setArgument(mAppArgument).build();
+            mMusubi.getFeed().postAppState(appState);
         } catch (JSONException e) {}
 	}
 
