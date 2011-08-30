@@ -7,7 +7,6 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,12 +22,10 @@ import org.json.JSONObject;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.ProgressDialog;
-import android.content.ComponentName;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
-import android.content.ServiceConnection;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 import android.graphics.Bitmap;
@@ -41,7 +38,6 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
-import android.os.IBinder;
 import android.os.Looper;
 import android.os.Message;
 import android.os.Process;
@@ -76,6 +72,7 @@ import edu.stanford.mobisocial.appmanifest.platforms.AndroidPlatformReference;
 import edu.stanford.mobisocial.appmanifest.platforms.PlatformReference;
 import edu.stanford.mobisocial.appmanifest.platforms.WebPlatformReference;
 
+@SuppressWarnings("deprecation")
 public class JXWhiteboardActivity extends Activity {
 
 	private WhiteboardProp prop;
@@ -92,7 +89,6 @@ public class JXWhiteboardActivity extends Activity {
     private static final int ERASE_WIDTH = 30;
     private static final int UPDATE_FREQUENCY = 10; // 9999999; // 4 for realtime.
 
-    private JunctionActor mActor;
     private ActivityScript mScript = null;
     
 	private int currentColor = 0x000000;
@@ -117,14 +113,16 @@ public class JXWhiteboardActivity extends Activity {
     private int localWidth = 0;
 
     private Nfc mNfc = null;
-    private SavedBoard mSavedBoard = null;
     private String mAppArgument = null;
     private boolean mPausingInternal = false;
+    private boolean mResumingInternal = false;
+    private boolean mConnectedToJunction = false;
+    private Uri mJunctionUri;
     private boolean mIsDirty = false; // Updated since load?
 
     private Musubi mMusubi;
 
-	public void onCreate(Bundle savedInstanceState) {
+    public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		panel = new DrawingPanel(this);
 		mPropUpdateThread = new PropUpdateThread();
@@ -133,15 +131,16 @@ public class JXWhiteboardActivity extends Activity {
 
 		mNfc = new Nfc(this);
 		Intent intent = getIntent();
+		SavedBoard savedBoard = null;
 		if (Musubi.isDungbeetleIntent(intent)) { // SocialKit.hasFeed(intent)
 		    mMusubi = Musubi.getInstance(this, intent);
 		    JSONObject state = mMusubi.getFeed().getLatestState();
-		    Log.d(TAG, "WE HAVE STATE " + state);
 		    if (state != null) {
-                mSavedBoard = new SavedBoard("loaded", state.optString("data"), state.optLong("seq"));
-                if (DBG) Log.d(TAG, "loading whiteboard state " + mSavedBoard.data + ", " + mSavedBoard.seqNum);
+                savedBoard = new SavedBoard("loaded", state.optString("data"), state.optLong("seq"));
+                if (DBG) Log.d(TAG, "loading whiteboard state " + savedBoard.data + ", " + savedBoard.seqNum);
 		    }
 		}
+		initBoard(savedBoard);
 
 		mScript = new ActivityScript();
 		mScript.setFriendlyName("JXWhiteboard");
@@ -170,13 +169,16 @@ public class JXWhiteboardActivity extends Activity {
             //sessionUri = fixedSessionUri("whiteboard");
 			sessionUri = newRandomSessionUri();
 		}
-		initJunction(sessionUri, mSavedBoard);
+		mJunctionUri = sessionUri;
 	}
 	
 	@Override
 	public void onResume() {
 		super.onResume();
 		mNfc.onResume(this);
+		if (!mResumingInternal) {
+		    initJunction(mJunctionUri);
+		}
 	}
 	
 	@Override
@@ -185,6 +187,11 @@ public class JXWhiteboardActivity extends Activity {
 		mNfc.onPause(this);
 		if (!mPausingInternal && mIsDirty && mMusubi != null) {
 		    sendToDungbeetle();
+		}
+		if (mPausingInternal) {
+		    mResumingInternal = true;
+		} else if (mConnectedToJunction) {
+		    closeJunction();
 		}
 		mPausingInternal = false;
 		mIsDirty = false;
@@ -297,7 +304,6 @@ public class JXWhiteboardActivity extends Activity {
                 //stroke.add(0);
                 //stroke.add(0);
 
-                int w = localToVirt(currentWidth);
                 int x = localToVirt(ev.getX(pointerIndex));
                 int y = localToVirt(ev.getY(pointerIndex));
 
@@ -344,7 +350,6 @@ public class JXWhiteboardActivity extends Activity {
 			// paint prop state
             prop.withState(new IWithStateAction<Void>(){
                     public Void run(IPropState state){
-                        Collection<JSONObject> items = ((ListState)state).items();
                         for (JSONObject o : prop.items()) {
                             int color = Integer.parseInt(o.optString("color").substring(1), 16);
                             mPaint.setColor(0xFF000000 | color);
@@ -449,9 +454,7 @@ public class JXWhiteboardActivity extends Activity {
 	}
 
 
-	private boolean externalStorageReadableAndWritable(){
-		boolean mExternalStorageAvailable = false;
-		boolean mExternalStorageWriteable = false;
+	private boolean externalStorageReadableAndWritable() {
 		String state = Environment.getExternalStorageState();
 
 		if (Environment.MEDIA_MOUNTED.equals(state)) {
@@ -643,7 +646,7 @@ public class JXWhiteboardActivity extends Activity {
 		startActivityForResult(i, REQUEST_CODE_LOAD_WHITEBOARD);
 	}
 
-	private void saveBoard(){
+	private void saveBoard() {
 		final Junction jx = mActor.getJunction();
 		if(jx != null){
 			AlertDialog.Builder alert = new AlertDialog.Builder(this);
@@ -714,7 +717,8 @@ public class JXWhiteboardActivity extends Activity {
 					WhiteboardIntents.EXTRA_SAVED_BOARD_SEQNUM, 0);
 				Log.d(TAG, "loading: " + seqNum + ", " + d);
 				SavedBoard b = new SavedBoard(name, d, seqNum);
-				initJunction(newRandomSessionUri(), b);
+				initBoard(b);
+				initJunction(newRandomSessionUri());
 			}
 			break;
 		}
@@ -730,12 +734,13 @@ public class JXWhiteboardActivity extends Activity {
 		return Uri.parse(uri.toString());
 	}
 
-	private Uri fixedSessionUri(String sessId){
+	@SuppressWarnings("unused")
+    private Uri fixedSessionUri(String sessId){
 		return Uri.parse(DEFAULT_HOST + "/" + sessId );
 	}
 
-    private void initJunction(final Uri uri, SavedBoard savedBoard) {
-        if (savedBoard != null) {
+	private void initBoard(SavedBoard savedBoard) {
+	    if (savedBoard != null) {
             JSONObject obj = savedBoard.obj();
             JSONArray items = obj.optJSONArray("items");
             ArrayList<JSONObject> strokes = new ArrayList<JSONObject>();
@@ -765,11 +770,9 @@ public class JXWhiteboardActivity extends Activity {
                 });
             }
         });
+	}
 
-        if (mActor != null) {
-            mActor.leave();
-        }
-
+    private void initJunction(final Uri uri) {
         final URI url;
         try {
             url = new URI(uri.toString());
@@ -777,31 +780,6 @@ public class JXWhiteboardActivity extends Activity {
             Log.e("JXWhiteboardActivity", "Failed to parse uri: " + uri.toString());
             return;
         }
-
-        mActor = new JunctionActor("participant") {
-            @Override
-            public void onActivityJoin() {
-                doNFCBroadcast();
-                System.out.println("joined!");
-            }
-
-            @Override
-            public void onMessageReceived(MessageHeader header, JSONObject msg) {
-                // System.out.println("Got msg!");
-            }
-
-            @Override
-            public List<JunctionExtra> getInitialExtras() {
-                ArrayList<JunctionExtra> extras = new ArrayList<JunctionExtra>();
-                extras.add(prop);
-                return extras;
-            }
-
-            @Override
-            public void onActivityCreate() {
-
-            }
-        };
 
         final SwitchboardConfig sb = AndroidJunctionMaker.getDefaultSwitchboardConfig(url);
         if (sb instanceof XMPPSwitchboardConfig) {
@@ -817,6 +795,7 @@ public class JXWhiteboardActivity extends Activity {
             protected Boolean doInBackground(Void... arg0) {
                 try {
                     AndroidJunctionMaker.getInstance(sb).newJunction(url, mScript, mActor);
+                    mConnectedToJunction = true;
                 } catch (JunctionException e) {
                     mmException = e;
                     return false;
@@ -842,12 +821,16 @@ public class JXWhiteboardActivity extends Activity {
 
             @Override
             protected void onPostExecute(Boolean result) {
-                mmProgress.hide();
+                mmProgress.dismiss();
                 if (!result && !mmCancelled) {
                     maybeRetryJunction(uri, mmException);
                 }
             };
         }.execute();
+    }
+
+    private void closeJunction() {
+        mActor.leave();
     }
 
 	private void maybeRetryJunction(final Uri uri, final JunctionException e){
@@ -858,7 +841,7 @@ public class JXWhiteboardActivity extends Activity {
 						 ". Retry connection?");
 		alert.setPositiveButton("Ok", new DialogInterface.OnClickListener() {  
 				public void onClick(DialogInterface dialog, int whichButton){  
-					initJunction(uri, null);
+					initJunction(uri);
 				}
 			});  
 		alert.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {  
@@ -866,28 +849,6 @@ public class JXWhiteboardActivity extends Activity {
 			});  
 		alert.show();  
 		return;
-	}
-
-	private LiaisonService mBoundService;
-
-	private ServiceConnection mConnection = new ServiceConnection() {
-			public void onServiceConnected(ComponentName className, IBinder service) {
-				mBoundService = ((LiaisonService.LiaisonBinder)service).getService();
-				mBoundService.init(Uri.parse(DEFAULT_HOST + "/" + "whiteboard_lobby"));
-			}
-
-			public void onServiceDisconnected(ComponentName className){
-				mBoundService = null;
-			}
-		};
-
-	private void bindLiaisonService(){
-		// Establish a connection with the service.  We use an explicit
-		// class name because we want a specific service implementation that
-		// we know will be running in our own process (and thus won't be
-		// supporting component replacement by other applications).
-		Intent intent = new Intent(this, LiaisonService.class);
-		bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
 	}
 
 	public void onDestroy(){
@@ -946,7 +907,7 @@ public class JXWhiteboardActivity extends Activity {
 
 		// hack! old code all over the place, broken whiteboards, etc!
 		String sessionId = mActor.getJunction().getSessionID();
-		String switchboard = mActor.getJunction().getSwitchboard();
+        String switchboard = mActor.getJunction().getSwitchboard();
 		String webUrl = "http://prpl.stanford.edu/junction/whiteboard2/?jxsessionid="+sessionId+"&jxswitchboard="+switchboard;
 		PlatformReference webReference = new WebPlatformReference(webUrl);
 		PlatformReference androidReference = new AndroidPlatformReference(0x09, getPackageName(), mActor.getJunction().getInvitationURI().toString());
@@ -978,7 +939,33 @@ public class JXWhiteboardActivity extends Activity {
         } catch (JSONException e) {}
 	}
 
-	private void toast(final String text) {
+	@SuppressWarnings("unused")
+    private void toast(final String text) {
 	    Toast.makeText(this, text, Toast.LENGTH_SHORT).show();
 	}
+
+	JunctionActor mActor = new JunctionActor("participant") {
+        @Override
+        public void onActivityJoin() {
+            doNFCBroadcast();
+            System.out.println("joined!");
+        }
+
+        @Override
+        public void onMessageReceived(MessageHeader header, JSONObject msg) {
+            // System.out.println("Got msg!");
+        }
+
+        @Override
+        public List<JunctionExtra> getInitialExtras() {
+            ArrayList<JunctionExtra> extras = new ArrayList<JunctionExtra>();
+            extras.add(prop);
+            return extras;
+        }
+
+        @Override
+        public void onActivityCreate() {
+
+        }
+    };
 }
