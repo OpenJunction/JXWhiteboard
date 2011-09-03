@@ -132,7 +132,7 @@ public class JXWhiteboardActivity extends Activity {
 		mNfc = new Nfc(this);
 		Intent intent = getIntent();
 		SavedBoard savedBoard = null;
-		if (Musubi.isDungbeetleIntent(intent)) { // SocialKit.hasFeed(intent)
+		if (Musubi.isMusubiIntent(intent)) { // SocialKit.hasFeed(intent)
 		    mMusubi = Musubi.getInstance(this, intent);
 		    JSONObject state = mMusubi.getFeed().getLatestState();
 		    if (state != null) {
