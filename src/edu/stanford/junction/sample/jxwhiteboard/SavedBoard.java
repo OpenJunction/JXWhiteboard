@@ -1,6 +1,9 @@
 package edu.stanford.junction.sample.jxwhiteboard;
 
 import org.json.*;
+
+import android.util.Log;
+
 import java.net.URI;
 import java.util.*;
 
@@ -21,6 +24,7 @@ public class SavedBoard{
 			return new JSONObject(data);
 		}
 		catch(JSONException e){
+		    Log.e("loadboard", "Error retrieving json ", e);
 			return new JSONObject();
 		}
 	}

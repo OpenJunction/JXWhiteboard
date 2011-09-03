@@ -78,7 +78,7 @@ public class JXWhiteboardActivity extends Activity {
 	private WhiteboardProp prop;
 
 	public static final String TAG = "whiteboard";
-	public static final boolean DBG = false;
+	public static final boolean DBG = true;
 	public static final String EXTRA_APP_ARGUMENT = "android.intent.extra.APPLICATION_ARGUMENT";
     private static final int REQUEST_CODE_PICK_COLOR = 1;
     private static final int REQUEST_CODE_PICK_LINE_WIDTH = 2;
@@ -107,9 +107,10 @@ public class JXWhiteboardActivity extends Activity {
 	public static final int SHARE_SNAPSHOT = 6;
 	public static final int LOAD_BOARD = 10;
 	public static final int SAVE_BOARD = 11;
+	public static final int LOAD_BITMAP = 12;
 	public static final String DEFAULT_HOST = "junction://prpl.stanford.edu";
 
-    private static final int VIRTUAL_WIDTH = 768;
+    static final int VIRTUAL_WIDTH = 768;
     private int localWidth = 0;
 
     private Nfc mNfc = null;
@@ -132,6 +133,7 @@ public class JXWhiteboardActivity extends Activity {
 		mNfc = new Nfc(this);
 		Intent intent = getIntent();
 		SavedBoard savedBoard = null;
+		Log.d(TAG, "RUNNING FRESH");
 		if (Musubi.isMusubiIntent(intent)) { // SocialKit.hasFeed(intent)
 		    mMusubi = Musubi.getInstance(this, intent);
 		    JSONObject state = mMusubi.getFeed().getLatestState();
@@ -139,6 +141,13 @@ public class JXWhiteboardActivity extends Activity {
                 savedBoard = new SavedBoard("loaded", state.optString("data"), state.optLong("seq"));
                 if (DBG) Log.d(TAG, "loading whiteboard state " + savedBoard.data + ", " + savedBoard.seqNum);
 		    }
+		}
+
+		if (intent.hasExtra("boardString")) {
+		    savedBoard = new SavedBoard("imported", intent.getStringExtra("boardString"), intent.getIntExtra("boardSeq", -1));
+            if (DBG) Log.d(TAG, "importing whiteboard state " + savedBoard.data + ", " + savedBoard.seqNum);
+            Log.d(TAG, "imported and have musubi " + mMusubi);
+            mIsDirty = true;
 		}
 		initBoard(savedBoard);
 
@@ -585,6 +594,7 @@ public class JXWhiteboardActivity extends Activity {
             menu.add(0, SHARE_SNAPSHOT, 0, "Send Snapshot");
             menu.add(0, LOAD_BOARD, 0, "Load a Saved Board");
             menu.add(0, SAVE_BOARD, 0, "Save Board");
+            menu.add(0, LOAD_BITMAP, 0, "Import Sketch");
             menu.add(0, EXIT, 0, "Exit");
         }
         return true;
@@ -622,6 +632,13 @@ public class JXWhiteboardActivity extends Activity {
 			return true;
 		case EXIT:
 			Process.killProcess(Process.myPid());
+			return true;
+		case LOAD_BITMAP:
+		    // TODO: forResult, or open new instance from activity
+		    Intent i = new Intent(getIntent());
+		    i.setClass(this, ImageToWhiteboardActivity.class);
+		    startActivity(i);
+		    return true;
 		}
 		return false;
 	}

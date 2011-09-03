@@ -53,6 +53,8 @@
 	<category android:name="android.intent.category.DEFAULT" />
       </intent-filter>
     </activity>
+    
+    <activity android:name="edu.stanford.junction.sample.jxwhiteboard.ImageToWhiteboardActivity" android:label="Image To Whiteboard"/>
 
     <activity android:name="edu.stanford.junction.sample.jxwhiteboard.FindWhiteboardsActivity"
 	      android:label="@string/findwhiteboards"
