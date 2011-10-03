@@ -29,6 +29,7 @@ import android.content.Intent;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Matrix;
 import android.graphics.Paint;
@@ -122,6 +123,7 @@ public class JXWhiteboardActivity extends Activity {
     private boolean mIsDirty = false; // Updated since load?
 
     private Musubi mMusubi;
+    private Uri mBackgroundUri;
 
     public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
@@ -147,6 +149,15 @@ public class JXWhiteboardActivity extends Activity {
 		    savedBoard = new SavedBoard("imported", intent.getStringExtra("boardString"), intent.getIntExtra("boardSeq", -1));
             if (DBG) Log.d(TAG, "importing whiteboard state " + savedBoard.data + ", " + savedBoard.seqNum);
             mIsDirty = true;
+		}
+
+		if (Intent.ACTION_EDIT.equals(intent.getAction())) {
+		    mBackgroundUri = intent.getData();
+		    /*try {
+		        mBackgroundImage = BitmapFactory.decodeStream(getContentResolver().openInputStream(mBackgroundUri));
+		    } catch (IOException e) {
+		        Log.e(TAG, "Failed loading background image");
+		    }*/
 		}
 
 		initBoard(savedBoard);
@@ -193,7 +204,15 @@ public class JXWhiteboardActivity extends Activity {
 	public void onPause() {
 		super.onPause();
 		mNfc.onPause(this);
-		if (!mPausingInternal && mIsDirty && mMusubi != null) {
+
+		// TODO: Have "save" button, set result there.
+        if (getIntent() != null && Intent.ACTION_EDIT.equals(getIntent().getAction())) {
+            Intent data = new Intent();
+            Snapshot snapshot = captureSnapshot();
+            // TODO: mCorral.corral(snapshot.uri); // argument for clone vs. ref
+            data.setData(snapshot.uri);
+            setResult(RESULT_OK, data);
+        } else if (!mPausingInternal && mIsDirty && mMusubi != null) {
 		    sendToDungbeetle();
 		}
 		if (mPausingInternal) {
@@ -204,7 +223,7 @@ public class JXWhiteboardActivity extends Activity {
 		mPausingInternal = false;
 		mIsDirty = false;
 	}
-	
+
 	@Override
     protected void onNewIntent(Intent intent) {
     	if (mNfc.onNewIntent(this, intent)) return;
@@ -352,9 +371,6 @@ public class JXWhiteboardActivity extends Activity {
 			mPaint.setStrokeJoin(Paint.Join.ROUND);
 			mPaint.setStrokeCap(Paint.Cap.ROUND);
 
-			// clear canvas
-			canvas.drawColor(0xFFFFFFFF);
-
 			// paint prop state
             prop.withState(new IWithStateAction<Void>(){
                     public Void run(IPropState state){
@@ -425,6 +441,26 @@ public class JXWhiteboardActivity extends Activity {
             if (_surfaceHolder != null && mBackgroundImage != null) {
                 Canvas canvas = new Canvas(mBackgroundImage);
                 if (all) {
+                    canvas.drawColor(0xFFFFFFFF);
+                    if (mBackgroundUri != null) {
+                        try {
+                            Log.d(TAG, "Trying to put background to canvas.");
+                            Bitmap bitmap = BitmapFactory.decodeStream(
+                                    getContentResolver().openInputStream(mBackgroundUri));
+                            int width = bitmap.getWidth();
+                            int height = bitmap.getHeight();
+                            int cropSize = Math.min(width, height);
+
+                            float scaleSize = ((float) localWidth) / cropSize;
+
+                            Matrix matrix = new Matrix();
+                            matrix.postScale(scaleSize, scaleSize);
+                            canvas.drawBitmap(bitmap, matrix, null);
+                            Log.d(TAG, "put bitmap to canvas: " + bitmap.getWidth() + ", " + bitmap.getHeight());
+                        } catch (IOException e) {
+                            Log.e(TAG, "failed to draw background", e);
+                        }
+                    }
                     paintState(canvas);
                 } else {
                     paintCurrentStrokes(canvas);
@@ -521,40 +557,32 @@ public class JXWhiteboardActivity extends Activity {
 			String filename = "jxwhiteboard_tmp_output.png";
 			// If sd card is available, we'll write the full quality image there
 			// before sending..
-			if(externalStorageReadableAndWritable()){
-				Bitmap bitmap = mBackgroundImage;
-				File png = new File(Environment.getExternalStorageDirectory(), filename);
-				if (png.exists()) {
-				    try {
-				        png.delete();
-				        png = new File(Environment.getExternalStorageDirectory(), filename);
-				    } catch (Exception e) {
-				        Log.e(TAG, "error removing file", e);
-				    }
-				}
-				FileOutputStream out = null;
-				try {
-					out = new FileOutputStream(png);
-					bitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
-					out.flush();
-				} catch (Exception e) {
-					e.printStackTrace();
-				} finally {
-					try {
-						if (out != null) out.close();
-					}
-					catch (IOException ignore) {}
-				}
-				return new Snapshot("image/png", Uri.fromFile(png));
-				
-			}
-			// Otherwise, use mediastore, which unfortunately compresses the hell
-			// out of the image.
-			else{
-				String url = MediaStore.Images.Media.insertImage(
-					getContentResolver(), mBackgroundImage, filename, null);
-				return new Snapshot("image/jpg", Uri.parse(url));
-			}
+			Bitmap bitmap = mBackgroundImage;
+			File base = Environment.getExternalStorageDirectory();
+            File png = new File(base, filename);
+            if (png.exists()) {
+                try {
+                    png.delete();
+                } catch (Exception e) {
+                    Log.e(TAG, "error removing file", e);
+                }
+            }
+            Log.d(TAG, "Attempting to write " + png);
+            FileOutputStream out = null;
+            try {
+                png.getParentFile().mkdirs();
+                out = new FileOutputStream(png);
+                bitmap.compress(Bitmap.CompressFormat.PNG, 80, out);
+                out.flush();
+            } catch (Exception e) {
+                e.printStackTrace();
+            } finally {
+                try {
+                    if (out != null) out.close();
+                }
+                catch (IOException ignore) {}
+            }
+            return new Snapshot("image/png", Uri.fromFile(png));
 		}
 		return null;
 	}
