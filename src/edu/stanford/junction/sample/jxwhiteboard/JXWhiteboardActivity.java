@@ -133,7 +133,7 @@ public class JXWhiteboardActivity extends Activity {
 		mNfc = new Nfc(this);
 		Intent intent = getIntent();
 		SavedBoard savedBoard = null;
-		Log.d(TAG, "RUNNING FRESH");
+
 		if (Musubi.isMusubiIntent(intent)) { // SocialKit.hasFeed(intent)
 		    mMusubi = Musubi.getInstance(this, intent);
 		    JSONObject state = mMusubi.getFeed().getLatestState();
@@ -146,11 +146,10 @@ public class JXWhiteboardActivity extends Activity {
 		if (intent.hasExtra("boardString")) {
 		    savedBoard = new SavedBoard("imported", intent.getStringExtra("boardString"), intent.getIntExtra("boardSeq", -1));
             if (DBG) Log.d(TAG, "importing whiteboard state " + savedBoard.data + ", " + savedBoard.seqNum);
-            Log.d(TAG, "imported and have musubi " + mMusubi);
             mIsDirty = true;
 		}
-		initBoard(savedBoard);
 
+		initBoard(savedBoard);
 		mScript = new ActivityScript();
 		mScript.setFriendlyName("JXWhiteboard");
 		JSONObject androidPlatform = new JSONObject();

@@ -5,10 +5,13 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Random;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+
+import edu.stanford.junction.sample.jxwhiteboard.util.StringUtils;
 
 import android.content.ContentResolver;
 import android.content.Context;
@@ -75,7 +78,7 @@ public class ImageToWhiteboardActivity extends FragmentActivity {
             int height = sourceBitmap.getHeight();
             int cropSize = Math.min(width, height);
 
-            int targetSize = 50;
+            int targetSize = 75;
             float scaleSize = ((float) targetSize) / cropSize;
 
             Matrix matrix = new Matrix();
@@ -92,6 +95,7 @@ public class ImageToWhiteboardActivity extends FragmentActivity {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             long total = 0;
             resizedBitmap.compress(Bitmap.CompressFormat.JPEG, 100, baos);
+
             for (int x = 0; x < width; x++) {
                 int rowTotal = 0;
                 for (int y = 0; y < height; y++) {
@@ -125,46 +129,88 @@ public class ImageToWhiteboardActivity extends FragmentActivity {
             // horribly wasteful! todo: add point-based parameters. eg, "p":[0,1,2,3]
             // the above demonstrates that approach.
 
+            
             try {
-                int id = 0;
                 JSONObject drawing = new JSONObject();
-                JSONArray items = new JSONArray();
-    
-                long average = total / width;
-                float factor = 740 / width;
-                for (int x = 1; x < width; x++) {
-                    for (int y = 1; y < height; y++) {
-                        int pixel = resizedBitmap.getPixel(x, y);
-                        if (colorValue(pixel) > average) {
-
-                            JSONObject obj = new JSONObject();
-                            obj.put("id", id++);
-                            obj.put("color", "#000000");
-
-                            JSONArray dpx = new JSONArray();
-                            dpx.put((x-1)*factor);
-                            dpx.put((y-1)*factor);
-                            dpx.put(x*factor);
-                            dpx.put(y*factor);
-                            obj.put("points", dpx);
-                            items.put(obj);
-                        } else {
-    
-                        }
-                    }
-                }
+                JSONArray items;
+                items = getThresholdTrace(resizedBitmap);
+                //items = getSampledTrace(resizedBitmap);
     
                 drawing.put("items", items);
                 Intent imprt = new Intent(getIntent());
                 imprt.setClass(this, JXWhiteboardActivity.class);
                 imprt.putExtra("boardString", drawing.toString());
                 imprt.putExtra("boardSeq", 1);
+                imprt.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
                 startActivity(imprt);
                 finish();
             } catch (JSONException e) {
-                Log.e(TAG, "piss off json", e);
             }
         }
+    }
+
+    /**
+     * Threshold-based tracing
+     */
+    private JSONArray getThresholdTrace(Bitmap image) throws JSONException {
+        int width = image.getWidth();
+        int height = image.getHeight();
+        JSONArray items = new JSONArray();
+        float factor = 740 / width;
+        int threshold = 200;
+        int id = 0;
+        for (int x = 1; x < width; x++) {
+            for (int y = 1; y < height; y++) {
+                int pixel = image.getPixel(x, y);
+                if (colorValue(pixel) < threshold) {
+                    JSONObject obj = new JSONObject();
+                    obj.put("id", id++);
+                    obj.put("color", "#00000000");
+
+                    JSONArray dpx = new JSONArray();
+                    dpx.put(x*factor-1);
+                    dpx.put(y*factor-1);
+                    dpx.put(x*factor);
+                    dpx.put(y*factor);
+                    obj.put("points", dpx);
+                    items.put(obj);
+                } else {
+
+                }
+            }
+        }
+        return items;
+    }
+
+    /**
+     * Threshold-based tracing
+     */
+    private JSONArray getSampledTrace(Bitmap image) throws JSONException {
+        int width = image.getWidth();
+        int height = image.getHeight();
+        JSONArray items = new JSONArray();
+        float factor = 740 / width;
+        int SAMPLES = 3000;
+        int id = 0;
+        Random rand = new Random();
+        
+        for (int i = 0; i < SAMPLES; i++) {
+            int x = rand.nextInt(width);
+            int y = rand.nextInt(height);
+            int pixel = image.getPixel(x, y);
+            JSONObject obj = new JSONObject();
+            obj.put("id", id++);
+            obj.put("color", colorToHex(pixel));
+
+            JSONArray dpx = new JSONArray();
+            dpx.put(x*factor-1);
+            dpx.put(y*factor-1);
+            dpx.put(x*factor);
+            dpx.put(y*factor);
+            obj.put("points", dpx);
+            items.put(obj);
+        }
+        return items;
     }
 
     public static float exifOrientationToDegrees(int exifOrientation) {
@@ -222,5 +268,17 @@ public class ImageToWhiteboardActivity extends FragmentActivity {
         int g = Color.green(color);
         int b = Color.blue(color);
         return Math.round((float)Math.sqrt(r*r + g*g + b*b));
+    }
+
+    private String colorToHex(int color) {
+        byte r = (byte)Color.red(color);
+        byte g = (byte)Color.green(color);
+        byte b = (byte)Color.blue(color);
+        return new StringBuilder(9)
+            .append("#00")
+            .append(StringUtils.getHex(r))
+            .append(StringUtils.getHex(g))
+            .append(StringUtils.getHex(b))
+            .toString();
     }
 }
