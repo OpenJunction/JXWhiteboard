@@ -42,8 +42,8 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.os.Process;
-import android.provider.MediaStore;
 import android.util.Log;
+import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.MotionEvent;
@@ -205,14 +205,9 @@ public class JXWhiteboardActivity extends Activity {
 		super.onPause();
 		mNfc.onPause(this);
 
-		// TODO: Have "save" button, set result there.
-        if (getIntent() != null && Intent.ACTION_EDIT.equals(getIntent().getAction())) {
-            Intent data = new Intent();
-            Snapshot snapshot = captureSnapshot();
-            // TODO: mCorral.corral(snapshot.uri); // argument for clone vs. ref
-            data.setData(snapshot.uri);
-            setResult(RESULT_OK, data);
-        } else if (!mPausingInternal && mIsDirty && mMusubi != null) {
+		if (getIntent() != null && Intent.ACTION_EDIT.equals(getIntent().getAction())) {
+		    // handled in onKeyDown()
+		} else if (!mPausingInternal && mIsDirty && mMusubi != null) {
 		    sendToDungbeetle();
 		}
 		if (mPausingInternal) {
@@ -228,6 +223,35 @@ public class JXWhiteboardActivity extends Activity {
     protected void onNewIntent(Intent intent) {
     	if (mNfc.onNewIntent(this, intent)) return;
     }
+
+	@Override
+	public boolean onKeyDown(int keyCode, KeyEvent event) {
+	    if (mIsDirty && keyCode == KeyEvent.KEYCODE_BACK &&
+	            getIntent() != null && Intent.ACTION_EDIT.equals(getIntent().getAction())) {
+	        new AlertDialog.Builder(JXWhiteboardActivity.this)
+	            .setTitle("Save changes?")
+	            .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        Intent data = new Intent();
+                        Snapshot snapshot = captureSnapshot();
+                        // TODO: mCorral.corral(snapshot.uri); // argument for clone vs. ref
+                        data.setData(snapshot.uri);
+                        setResult(RESULT_OK, data);
+                        finish();
+                    }
+                })
+                .setNegativeButton("No", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        setResult(RESULT_CANCELED);
+                        finish();
+                    }
+                }).create().show();
+	        return true;
+	    }
+	    return super.onKeyDown(keyCode, event);
+	}
 
     class DrawingPanel extends SurfaceView implements SurfaceHolder.Callback {
         private Map<Integer, List<Integer>> currentStrokes = new HashMap<Integer, List<Integer>>();
