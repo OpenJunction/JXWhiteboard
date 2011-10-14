@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 import mobisocial.nfc.Nfc;
-import mobisocial.socialkit.musubi.AppState;
+import mobisocial.socialkit.musubi.FeedRenderable;
 import mobisocial.socialkit.musubi.Musubi;
 
 import org.json.JSONArray;
@@ -138,7 +138,7 @@ public class JXWhiteboardActivity extends Activity {
 
 		if (Musubi.isMusubiIntent(intent)) { // SocialKit.hasFeed(intent)
 		    mMusubi = Musubi.getInstance(this, intent);
-		    JSONObject state = mMusubi.getFeed().getLatestState();
+		    JSONObject state = mMusubi.getFeed().getLatestObj();
 		    if (state != null) {
                 savedBoard = new SavedBoard("loaded", state.optString("data"), state.optLong("seq"));
                 if (DBG) Log.d(TAG, "loading whiteboard state " + savedBoard.data + ", " + savedBoard.seqNum);
@@ -999,11 +999,8 @@ public class JXWhiteboardActivity extends Activity {
             JSONObject state = new JSONObject();
             state.put("data", prop.stateToJSON().toString());
             state.put("seq", prop.getSequenceNum());
-            AppState appState = new AppState.Builder()
-                .setState(state)
-                .setThumbnailB64Image(captureThumbnailBase64())
-                .setArgument(mAppArgument).build();
-            mMusubi.getFeed().postAppState(appState);
+            FeedRenderable render = FeedRenderable.fromB64Image(captureThumbnailBase64());
+            mMusubi.getFeed().postAppStateRenderable(state, render);
         } catch (JSONException e) {}
 	}
 
