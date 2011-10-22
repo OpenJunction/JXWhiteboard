@@ -92,8 +92,8 @@ public class JXWhiteboardActivity extends Activity {
 
     private ActivityScript mScript = null;
     
-	private int currentColor = 0x000000;
-	private int currentWidth = 3;
+	private int currentColor = 0x56A5EC;
+	private int currentWidth = 13;
 	private boolean eraseMode = false;
 	private Bitmap mBackgroundImage = null;
 	private DrawingPanel panel = null;
