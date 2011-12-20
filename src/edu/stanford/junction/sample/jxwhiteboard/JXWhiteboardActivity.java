@@ -12,8 +12,10 @@ import java.util.List;
 import java.util.Map;
 
 import mobisocial.nfc.Nfc;
-import mobisocial.socialkit.musubi.FeedRenderable;
+import mobisocial.socialkit.musubi.DbObj;
 import mobisocial.socialkit.musubi.Musubi;
+import mobisocial.socialkit.musubi.multiplayer.FeedRenderable;
+import mobisocial.socialkit.obj.AppStateObj;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -137,9 +139,12 @@ public class JXWhiteboardActivity extends Activity {
 		SavedBoard savedBoard = null;
 
 		if (Musubi.isMusubiIntent(intent)) { // SocialKit.hasFeed(intent)
+		    Log.d(TAG, "HAS EXTRAS " + intent.getExtras());
 		    mMusubi = Musubi.getInstance(this, intent);
-		    JSONObject state = mMusubi.getFeed().getLatestObj();
-		    if (state != null) {
+		    DbObj latest = mMusubi.getObj().getSubfeed().getLatestObj();
+		    Log.d(TAG, "LATST " + latest.getType());
+		    if (latest != null && AppStateObj.TYPE.equals(latest.getType())) {
+		        JSONObject state = latest.getJson();
                 savedBoard = new SavedBoard("loaded", state.optString("data"), state.optLong("seq"));
                 if (DBG) Log.d(TAG, "loading whiteboard state " + savedBoard.data + ", " + savedBoard.seqNum);
 		    }
@@ -183,7 +188,7 @@ public class JXWhiteboardActivity extends Activity {
 		    Log.i("JXWhiteboard", "Got app argument: " + mAppArgument);
 			sessionUri = Uri.parse(mAppArgument);
 		} else if (mMusubi != null) {
-           sessionUri = Uri.parse(mMusubi.getFeed().getJunction().getInvitationURI().toString());
+           sessionUri = Uri.parse(mMusubi.getObj().getSubfeed().getJunction().getInvitationURI().toString());
         } else {
             //sessionUri = fixedSessionUri("whiteboard");
 			sessionUri = newRandomSessionUri();
@@ -1000,7 +1005,7 @@ public class JXWhiteboardActivity extends Activity {
             state.put("data", prop.stateToJSON().toString());
             state.put("seq", prop.getSequenceNum());
             FeedRenderable render = FeedRenderable.fromB64Image(captureThumbnailBase64());
-            mMusubi.getFeed().postAppStateRenderable(state, render);
+            mMusubi.getObj().getSubfeed().postObj(new AppStateObj(state, render));
         } catch (JSONException e) {}
 	}
 
