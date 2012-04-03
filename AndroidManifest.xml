@@ -30,6 +30,7 @@
       
       <intent-filter>
 		<action android:name="android.intent.action.EDIT" />
+		<category android:name="mobisocial.intent.category.IN_PLACE" />
 		<category android:name="android.intent.category.DEFAULT" />
 		<data android:mimeType="image/*" />
       </intent-filter>

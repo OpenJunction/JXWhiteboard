@@ -12,7 +12,6 @@ import java.util.List;
 import java.util.Map;
 
 import mobisocial.nfc.Nfc;
-import mobisocial.socialkit.musubi.DbObj;
 import mobisocial.socialkit.musubi.Musubi;
 import mobisocial.socialkit.musubi.multiplayer.FeedRenderable;
 import mobisocial.socialkit.obj.AppStateObj;
@@ -139,15 +138,14 @@ public class JXWhiteboardActivity extends Activity {
 		SavedBoard savedBoard = null;
 
 		if (Musubi.isMusubiIntent(intent)) { // SocialKit.hasFeed(intent)
-		    Log.d(TAG, "HAS EXTRAS " + intent.getExtras());
+		    /*Log.d(TAG, "HAS EXTRAS " + intent.getExtras());
 		    mMusubi = Musubi.getInstance(this, intent);
 		    DbObj latest = mMusubi.getObj().getSubfeed().getLatestObj();
-		    Log.d(TAG, "LATST " + latest.getType());
 		    if (latest != null && AppStateObj.TYPE.equals(latest.getType())) {
 		        JSONObject state = latest.getJson();
                 savedBoard = new SavedBoard("loaded", state.optString("data"), state.optLong("seq"));
                 if (DBG) Log.d(TAG, "loading whiteboard state " + savedBoard.data + ", " + savedBoard.seqNum);
-		    }
+		    }*/
 		}
 
 		if (intent.hasExtra("boardString")) {
@@ -238,11 +236,15 @@ public class JXWhiteboardActivity extends Activity {
 	            .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
-                        Intent data = new Intent();
-                        Snapshot snapshot = captureSnapshot();
+                        File file;
+                        if (getIntent().hasCategory("mobisocial.intent.category.IN_PLACE")) {
+                            file = new File(getIntent().getData().getPath());
+                        } else {
+                            file = getTempFile();
+                        }
+                        captureSnapshot(file);
                         // TODO: mCorral.corral(snapshot.uri); // argument for clone vs. ref
-                        data.setData(snapshot.uri);
-                        setResult(RESULT_OK, data);
+                        setResult(RESULT_OK);
                         finish();
                     }
                 })
@@ -544,13 +546,19 @@ public class JXWhiteboardActivity extends Activity {
 	}
 
 	private void shareSnapshot() {
-	    Snapshot snapshot = captureSnapshot();
+	    Snapshot snapshot = captureSnapshot(getTempFile());
 
 	    final Intent shareIntent = new Intent(android.content.Intent.ACTION_SEND);
 	    shareIntent.putExtra(Intent.EXTRA_SUBJECT, "Whiteboard Snapshot");
         shareIntent.putExtra(Intent.EXTRA_STREAM, snapshot.uri);
         shareIntent.setType(snapshot.type);
         startActivity(Intent.createChooser(shareIntent, "Share Snapshot..."));
+	}
+
+	File getTempFile() {
+	    String filename = "jxwhiteboard_tmp_output.png";
+        File base = Environment.getExternalStorageDirectory();
+        return new File(base, filename);
 	}
 
 	class Snapshot {
@@ -581,26 +589,23 @@ public class JXWhiteboardActivity extends Activity {
         return Base64.encodeToString(data, false);
 	}
 
-	private Snapshot captureSnapshot() {
+	private Snapshot captureSnapshot(File file) {
 		if(mBackgroundImage != null) {
-			String filename = "jxwhiteboard_tmp_output.png";
 			// If sd card is available, we'll write the full quality image there
 			// before sending..
 			Bitmap bitmap = mBackgroundImage;
-			File base = Environment.getExternalStorageDirectory();
-            File png = new File(base, filename);
-            if (png.exists()) {
+            if (file.exists()) {
                 try {
-                    png.delete();
+                    file.delete();
                 } catch (Exception e) {
                     Log.e(TAG, "error removing file", e);
                 }
             }
-            Log.d(TAG, "Attempting to write " + png);
+            Log.d(TAG, "Attempting to write " + file);
             FileOutputStream out = null;
             try {
-                png.getParentFile().mkdirs();
-                out = new FileOutputStream(png);
+                file.getParentFile().mkdirs();
+                out = new FileOutputStream(file);
                 bitmap.compress(Bitmap.CompressFormat.PNG, 80, out);
                 out.flush();
             } catch (Exception e) {
@@ -611,7 +616,7 @@ public class JXWhiteboardActivity extends Activity {
                 }
                 catch (IOException ignore) {}
             }
-            return new Snapshot("image/png", Uri.fromFile(png));
+            return new Snapshot("image/png", Uri.fromFile(file));
 		}
 		return null;
 	}
