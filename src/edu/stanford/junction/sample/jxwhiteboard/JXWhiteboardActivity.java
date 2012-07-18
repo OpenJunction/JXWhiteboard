@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 import mobisocial.nfc.Nfc;
+import mobisocial.socialkit.Obj;
 import mobisocial.socialkit.musubi.Musubi;
 import mobisocial.socialkit.musubi.multiplayer.FeedRenderable;
 import mobisocial.socialkit.obj.AppStateObj;
@@ -20,6 +21,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.ProgressDialog;
@@ -74,6 +76,7 @@ import edu.stanford.mobisocial.appmanifest.platforms.AndroidPlatformReference;
 import edu.stanford.mobisocial.appmanifest.platforms.PlatformReference;
 import edu.stanford.mobisocial.appmanifest.platforms.WebPlatformReference;
 
+@SuppressLint("NewApi")
 @SuppressWarnings("deprecation")
 public class JXWhiteboardActivity extends Activity {
 
@@ -138,6 +141,7 @@ public class JXWhiteboardActivity extends Activity {
 		SavedBoard savedBoard = null;
 
 		if (Musubi.isMusubiIntent(intent)) { // SocialKit.hasFeed(intent)
+			mMusubi = Musubi.forIntent(this, intent);
 		    /*Log.d(TAG, "HAS EXTRAS " + intent.getExtras());
 		    mMusubi = Musubi.getInstance(this, intent);
 		    DbObj latest = mMusubi.getObj().getSubfeed().getLatestObj();
@@ -185,12 +189,17 @@ public class JXWhiteboardActivity extends Activity {
 		} else if (mAppArgument != null && mAppArgument.length() > 0) {
 		    Log.i("JXWhiteboard", "Got app argument: " + mAppArgument);
 			sessionUri = Uri.parse(mAppArgument);
-		} else if (mMusubi != null) {
-           sessionUri = Uri.parse(mMusubi.getObj().getSubfeed().getJunction().getInvitationURI().toString());
+		} else if (mMusubi != null && mMusubi.getObj() != null) {
+			Log.d(TAG, "connected via musubi");
+			Obj obj = mMusubi.getObj();
+			String sessionString = obj.getJson().optString("session-uri");
+			sessionUri = Uri.parse(sessionString); // XXX get from obj
+           //sessionUri = Uri.parse(mMusubi.getObj().getSubfeed().getJunction().getInvitationURI().toString());
         } else {
             //sessionUri = fixedSessionUri("whiteboard");
 			sessionUri = newRandomSessionUri();
 		}
+		Log.d(TAG, "connecting to whiteboard " + sessionUri);
 		mJunctionUri = sessionUri;
 	}
 	

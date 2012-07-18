@@ -20,14 +20,10 @@
 		<category android:name="android.intent.category.LAUNCHER" />
       </intent-filter>
       <intent-filter>
-		<action android:name="mobisocial.intent.action.CONNECTED" />
-		<category android:name="android.intent.category.LAUNCHER" />
+        <action android:name="android.intent.action.VIEW" />
+		<category android:name="android.intent.category.DEFAULT" />
+		<data android:mimeType="vnd.musubi.obj/wepaint" />
       </intent-filter>
-      <intent-filter>
-		<action android:name="junction.intent.action.JOIN" />
-		<category android:name="junction.intent.category.BOOTSTRAP" />
-      </intent-filter>
-      
       <intent-filter>
 		<action android:name="android.intent.action.EDIT" />
 		<category android:name="mobisocial.intent.category.IN_PLACE" />
@@ -35,7 +31,13 @@
 		<data android:mimeType="image/*" />
       </intent-filter>
     </activity>
-
+    
+    <activity android:name="edu.stanford.junction.sample.jxwhiteboard.SessionKickoffActivity">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+         <category android:name="musubi.intent.category.MENU" />
+      </intent-filter>
+    </activity>
     <receiver android:name="edu.stanford.junction.sample.jxwhiteboard.P2PConfigurationReceiver"
     	android:label="@string/app_name">
     	  <!-- <intent-filter>
