@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 import mobisocial.nfc.Nfc;
-import mobisocial.socialkit.Obj;
+import mobisocial.socialkit.musubi.DbObj;
 import mobisocial.socialkit.musubi.Musubi;
 import mobisocial.socialkit.musubi.multiplayer.FeedRenderable;
 import mobisocial.socialkit.obj.AppStateObj;
@@ -189,12 +189,20 @@ public class JXWhiteboardActivity extends Activity {
 		} else if (mAppArgument != null && mAppArgument.length() > 0) {
 		    Log.i("JXWhiteboard", "Got app argument: " + mAppArgument);
 			sessionUri = Uri.parse(mAppArgument);
-		} else if (mMusubi != null && mMusubi.getObj() != null) {
-			Log.d(TAG, "connected via musubi");
-			Obj obj = mMusubi.getObj();
-			String sessionString = obj.getJson().optString("session-uri");
-			sessionUri = Uri.parse(sessionString); // XXX get from obj
-           //sessionUri = Uri.parse(mMusubi.getObj().getSubfeed().getJunction().getInvitationURI().toString());
+		} else if (mMusubi != null) {
+			String sessionString;
+			if (mMusubi.getObj() != null) {
+				DbObj obj = mMusubi.getObj();
+				sessionString = obj.getJson().optString("session-uri");
+				if (sessionString == null || sessionString.isEmpty()) {
+					sessionString = "junction://prpl.stanford.edu/" + obj.getUniversalHashString();
+				}
+				sessionUri = Uri.parse(sessionString); // XXX get from obj
+				Log.d(TAG, "connected via musubi wepaint obj");
+			} else {
+				sessionUri = null;
+				Log.d(TAG, "no Musubi obj in " + getIntent().getExtras());
+			}
         } else {
             //sessionUri = fixedSessionUri("whiteboard");
 			sessionUri = newRandomSessionUri();
